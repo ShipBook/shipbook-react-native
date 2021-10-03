@@ -1,6 +1,8 @@
+import sessionManager from "./networking/session-manager";
+
 export default class Shipbook {
   static async start(appId: string, appKey: string, url?: string) {
-
+    return await sessionManager.login(appId, appKey);
   }
 
   static enableInnerLog(enable: boolean) {
