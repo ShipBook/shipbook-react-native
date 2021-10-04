@@ -15,10 +15,10 @@ export default class ConsoleAppender implements BaseAppender {
     this.pattern = config?.pattern;
   }
 
-  push(log: BaseLog): void {
+  async push(log: BaseLog): Promise<void> {
     console.log('entered push')
     if (log.type == LogType.Message) {
-      const message = <Message>log;
+      const message = await (<Message>log).getObj();
       const text = `${message.file} ${message.line} ${message.message}`;
       switch(message.severity) {
         // case Severity.Error:

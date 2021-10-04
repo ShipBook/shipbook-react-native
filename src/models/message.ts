@@ -13,6 +13,9 @@ export default class Message extends BaseLog {
   file?: string;
   line?: number;
 
+  private resolve?: (message:Message) => void; 
+  private stackReceived = false;
+
   constructor(message: string,
               severity: Severity, 
               tag?: string,
@@ -37,8 +40,8 @@ export default class Message extends BaseLog {
       let stack = stackTraceParser.parse(stackString);
       stack.splice(0,3);
       const symbolicateStackTrace = require("react-native/Libraries/Core/Devtools/symbolicateStackTrace");
-      symbolicateStackTrace(stack).then((stackTemp: any) => {
-        // console.log(stackTemp);
+      symbolicateStackTrace(stack).then((stackTrace: any) => {
+        stack = stackTrace.stack;
         const frame = stack.find(f => !Message.ignoreClasses.has(f.methodName)); // TODO: not correct
         if (frame) {
           this.function = frame.methodName;
@@ -50,7 +53,8 @@ export default class Message extends BaseLog {
           let index = this.file?.lastIndexOf('.');
           this.tag = this.file?.substring(index! + 1) ?? '<unknown>';
         }
-      
+        this.stackReceived = true;
+        if (this.resolve) this.resolve(this);
       });
     }
 
@@ -58,4 +62,14 @@ export default class Message extends BaseLog {
     // TODO make that it will except exceptions 
   }
 
+  async getObj(): Promise<Message> {
+    if (!this.stackReceived) {
+      let promise = new Promise<Message>((resolve) => {
+        this.resolve = resolve;
+      })
+
+      return promise;
+    }
+    return this;
+  }
 }
