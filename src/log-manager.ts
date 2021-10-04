@@ -1,7 +1,9 @@
 import AppenderFactory from './appenders/appender-factory';
 import {BaseAppender} from './appenders/base-appender';
+import { CONFIG_CHANGE, eventEmitter } from './event-emitter';
+import BaseLog from './models/base-log';
 import Message from './models/message';
-
+import {Severity, SeverityUtil } from './models/severity';
 
 interface Logger {
   key: string;
@@ -79,7 +81,7 @@ class LogManager {
         this.appenders.set(appender.name, base);  
       }
       catch (e) {
-        console.log('didn\'t succeed to create appender: wron appender name: ' + appender.name)
+        console.log('didn\'t succeed to create appender: wrong appender name: ' + appender.name)
       }
     });
 
@@ -97,6 +99,9 @@ class LogManager {
         this.loggers.push(log);
       }
     });
+
+    console.log('emitting config change');
+    eventEmitter.emit(CONFIG_CHANGE);
   }
 }
 

@@ -11,7 +11,7 @@ export default class Login {
   udid: string = 'TEST UDID';
   time: Date;
   deviceTime: Date; // the device time in the time of the login request
-  os: string = '';
+  os: string = 'ios';
   osVersion: string = '';
   appVersion: string = '';
   appBuild: string = '';

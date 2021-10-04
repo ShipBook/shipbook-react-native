@@ -1,8 +1,8 @@
-enum LogType {
+export enum LogType {
   Message = 'message', 
 }
 
-class BaseLog {
+export default class BaseLog {
   static count = 0;
   time: Date;
   orderId: number;

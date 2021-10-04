@@ -1,4 +1,4 @@
-enum Severity {
+export enum Severity {
   Off = 'Off',
   Error = 'Error',
   Warning = 'Warning',
@@ -7,7 +7,7 @@ enum Severity {
   Verbose = 'Verbose'
 }
 
-class SeverityUtil {
+export class SeverityUtil {
   static value(severity: Severity) {
     switch(severity) {
       case Severity.Off: return 0;

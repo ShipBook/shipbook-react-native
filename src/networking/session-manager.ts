@@ -1,3 +1,4 @@
+import { CONNECTED, eventEmitter } from "../event-emitter";
 import logManager from "../log-manager";
 import Login from "../models/login";
 import User from "../models/user";
@@ -33,7 +34,9 @@ class SessionManager {
       this.token = json.token;
   
       // set config information
-      logManager.config = json.config;
+      logManager.config(json.config);
+      eventEmitter.emit(CONNECTED);
+
       // saf
       return json.sessionUrl;  
     }

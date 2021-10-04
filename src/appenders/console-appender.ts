@@ -1,4 +1,6 @@
+import BaseLog, { LogType } from "../models/base-log";
 import Message from "../models/message";
+import { Severity } from "../models/severity";
 import { BaseAppender } from "./base-appender";
 
 export default class ConsoleAppender implements BaseAppender {
@@ -14,7 +16,28 @@ export default class ConsoleAppender implements BaseAppender {
   }
 
   push(log: BaseLog): void {
-    if (log.type == LogType.Message) console.log((<Message>log).message);
+    console.log('entered push')
+    if (log.type == LogType.Message) {
+      const message = <Message>log;
+      const text = `${message.file} ${message.line} ${message.message}`;
+      switch(message.severity) {
+        // case Severity.Error:
+        //   console.error(text);
+        //   break;
+        // case Severity.Warning:
+        //   console.warn(text);
+        //   break;
+        // case Severity.Info:
+        //   console.info(text);
+        //   break;
+        // case Severity.Debug:
+        //   console.debug(text);
+        //   break;
+        default: 
+          console.log(`${message.severity} - ${text}`)
+          
+      }
+    }
   }
   flush(): void {
   }

@@ -1,8 +1,6 @@
 import logManager from "../log-manager";
 import sessionManager from "./session-manager";
 
-let BASE_URL = "https://api.shipbook.io/v1/";
-
 export enum HttpMethod {
   GET = 'GET',
   POST = 'POST',
@@ -11,6 +9,7 @@ export enum HttpMethod {
 }
 
 class ConnectionClient {
+  public BASE_URL = "https://api.shipbook.io/v1/";
   
   async request(url: string, body?: object, method?: HttpMethod): Promise<Response> {
     let headers: Headers = new Headers({
@@ -23,7 +22,7 @@ class ConnectionClient {
 
     if (method) init.method = method;
 
-    let resp = await fetch(BASE_URL + url, init);
+    let resp = await fetch(this.BASE_URL + url, init);
     if (!resp.ok && resp.status === 401 && resp.statusText === 'TokenExpired') { // call refresh token
       if (! await sessionManager.refreshToken()) return resp;
       resp = await this.request(url, body, method);

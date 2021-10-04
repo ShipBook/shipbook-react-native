@@ -1,5 +1,7 @@
+import { CONFIG_CHANGE, eventEmitter } from "./event-emitter";
 import LogManager from "./log-manager";
 import Message from "./models/message";
+import { Severity, SeverityUtil } from "./models/severity";
 
 export default class Log {
   private tag: string;
@@ -11,6 +13,11 @@ export default class Log {
     this.tag = tag;
     this.severity = LogManager.getSeverity(tag);
     this.callStackSeverity = LogManager.getCallStackSeverity(tag);
+    eventEmitter.addListener(CONFIG_CHANGE, () => {
+      console.log('config changed');
+      this.severity = LogManager.getSeverity(tag);
+      this.callStackSeverity = LogManager.getCallStackSeverity(tag);  
+    });
   }
 
   static e(msg: string, e?: Error) {
@@ -78,9 +85,11 @@ export default class Log {
   }
 
   message(msg: string, severity: Severity, e?: Error, func?: string, file?: string, line?: number, className?: string) {
+    console.log('message');
     if (SeverityUtil.value(severity) > SeverityUtil.value(this.severity)) return
+    console.log('past severity');
     const stackTrace = (SeverityUtil.value(severity) <= SeverityUtil.value(this.callStackSeverity)) ? new Error().stack : undefined;
     const message = new Message( msg, severity, this.tag, stackTrace, e, func, file,  line);
-    LogManager.push(message)
+    LogManager.push(message);
   }
 }
