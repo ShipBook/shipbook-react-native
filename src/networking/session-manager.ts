@@ -2,6 +2,7 @@ import { CONNECTED, eventEmitter } from "../event-emitter";
 import logManager from "../log-manager";
 import Login from "../models/login";
 import User from "../models/user";
+import storage from "../storage";
 import connectionClient, { HttpMethod } from "./connection-client";
 import ConnectionClient from "./connection-client";
 
@@ -13,8 +14,9 @@ class SessionManager {
   async login(appId: string, appKey: string) {
     // TODD save config
 
+    const config = await storage.getObj("config");
+    if (config) logManager.config(config);
 
-    console.log('entered login wow');
     this.loginObj = new Login(appId, appKey);
     return this.innerLogin();
 
@@ -25,28 +27,35 @@ class SessionManager {
 
     this.isInLoginRequest = true;
     this.token = undefined;
-    const resp = await ConnectionClient.request('auth/loginSdk', this.loginObj, HttpMethod.POST);
-    this.isInLoginRequest = false;
-
-    if (resp.ok) {
-      const json = await resp.json();
-      console.log('Succeeded! : ' + JSON.stringify(json));
-      this.token = json.token;
+    try {
+      const resp = await ConnectionClient.request('auth/loginSdk', this.loginObj, HttpMethod.POST);
+      this.isInLoginRequest = false;
   
-      // set config information
-      logManager.config(json.config);
-      eventEmitter.emit(CONNECTED);
-
-      // saf
-      return json.sessionUrl;  
-    }
-    else {
-      console.log('didn\'t succeed to log')
-      const text = await resp.text();
-      if (text) {
-        console.log('the info that was received: ' + text)
+      if (resp.ok) {
+        const json = await resp.json();
+        console.log('Succeeded! : ' + JSON.stringify(json));
+        this.token = json.token;
+    
+        // set config information
+        logManager.config(json.config);
+        eventEmitter.emit(CONNECTED);
+  
+        storage.setObj('config', json.config);
+  
+        return json.sessionUrl;  
       }
-      return;
+      else {
+        console.log('didn\'t succeed to log')
+        const text = await resp.text();
+        if (text) {
+          console.log('the info that was received: ' + text)
+        }
+        return;
+      }
+  
+    }
+    catch (e) {
+      console.log('there was an error with the request', e);
     }
   }
 

@@ -47,7 +47,7 @@ export default class Log {
                  func?: string,
                  file?: string,
                  line?: number) {
-    let message: Message
+    let message: Message;
     if (!tag) {
       message = new Message(msg, severity, undefined, undefined, error, func, file, line)
       if (!message.tag) return;
