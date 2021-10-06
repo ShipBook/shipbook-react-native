@@ -18,7 +18,7 @@ export default class ConsoleAppender implements BaseAppender {
   async push(log: BaseLog): Promise<void> {
     if (log.type == LogType.Message) {
       const message = await (<Message>log).getObj();
-      const text = `${message.file} ${message.line} ${message.message}`;
+      const text = `${message.fileName} ${message.lineNumber} ${message.message}`;
       switch(message.severity) {
         // case Severity.Error:
         //   console.error(text);

@@ -10,8 +10,8 @@ export default class Message extends BaseLog {
   stackTrace?: string;
   error?: Error;
   function?: string;
-  file?: string;
-  line?: number;
+  fileName?: string;
+  lineNumber?: number;
 
   private resolve?: (message:Message) => void; 
   private stackReceived = false;
@@ -32,8 +32,8 @@ export default class Message extends BaseLog {
     this.stackTrace = stackTrace;
     this.error = error;
     this.function = func;
-    this.file = file;
-    this.line = line;
+    this.fileName = file;
+    this.lineNumber = line;
 
     if (!file) {
       const stackString = new Error().stack!;
@@ -45,13 +45,13 @@ export default class Message extends BaseLog {
         const frame = stack.find(f => !Message.ignoreClasses.has(f.methodName)); // TODO: not correct
         if (frame) {
           this.function = frame.methodName;
-          this.file = frame.file ?? undefined;
-          this.line = frame.lineNumber ?? undefined;
+          this.fileName = frame.file ?? undefined;
+          this.lineNumber = frame.lineNumber ?? undefined;
         }      
         
         if (!tag) {
-          let index = this.file?.lastIndexOf('.');
-          this.tag = this.file?.substring(index! + 1) ?? '<unknown>';
+          let index = this.fileName?.lastIndexOf('.');
+          this.tag = this.fileName?.substring(index! + 1) ?? '<unknown>';
         }
         this.stackReceived = true;
         if (this.resolve) this.resolve(this);

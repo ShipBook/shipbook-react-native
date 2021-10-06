@@ -57,7 +57,7 @@ class Storage {
     console.log('keys', keys);
     const values = await AsyncStorage.multiGet(keys);
     console.log('values', values);
-    const objects = values.map(value => typeof(value[1]) === 'string' ? (JSON.parse(value[1]).data): undefined);
+    const objects = values.map(value => typeof(value[1]) === 'string' ? JSON.parse(value[1]): undefined);
     keys.push(`${key}_size`);
     await AsyncStorage.multiRemove(keys);
     return objects;

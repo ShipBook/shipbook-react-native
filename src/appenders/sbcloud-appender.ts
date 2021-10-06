@@ -91,16 +91,19 @@ export default class SBCloudAppender implements BaseAppender {
         
     const resp = await ConnectionClient.request('sessions/uploadSavedData', sessionsData, HttpMethod.POST);
     if (resp.ok) {
-      console.log('got ok of upload ')
+      const text = await resp.text()
+      console.log('got ok of upload ' + text)
+
     }
     else {
-      console.log('got not ok of upload '+ resp.statusText);
+      const text = await resp.text()
+      console.log('got not ok of upload '+ text);
     }
   }
 
   private async loadSessionData() {
     let storageData = <StorageData[]> await storage.popAllArrayObj(SESSION_DATA)
-    console.log(storageData);
+    console.log('storage data',storageData);
     let sessionsData : SessionData[] = [];
     let sessionData: SessionData | undefined = undefined;
 
@@ -126,12 +129,15 @@ export default class SBCloudAppender implements BaseAppender {
       }
     }
 
+    if (sessionData) sessionsData.push(sessionData);
+    console.log('session data', sessionsData);
     return sessionsData;
   }
 
   private async saveLogs(logs: BaseLog[]) {
     let storageData: StorageData[] = [];
     if (!this.hasLog) {
+      this.hasLog = true;
       const {token, loginObj} = SessionManager;
       if (token) {
         storageData.push({
