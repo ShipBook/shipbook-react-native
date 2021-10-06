@@ -1,6 +1,6 @@
 import BaseLog, { LogType } from "../models/base-log";
 import Message from "../models/message";
-import { Severity } from "../models/severity";
+// import { Severity } from "../models/severity";
 import { BaseAppender } from "./base-appender";
 
 export default class ConsoleAppender implements BaseAppender {
@@ -16,7 +16,6 @@ export default class ConsoleAppender implements BaseAppender {
   }
 
   async push(log: BaseLog): Promise<void> {
-    console.log('entered push')
     if (log.type == LogType.Message) {
       const message = await (<Message>log).getObj();
       const text = `${message.file} ${message.line} ${message.message}`;

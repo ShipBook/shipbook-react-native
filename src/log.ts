@@ -85,9 +85,7 @@ export default class Log {
   }
 
   message(msg: string, severity: Severity, e?: Error, func?: string, file?: string, line?: number, className?: string) {
-    console.log('message');
     if (SeverityUtil.value(severity) > SeverityUtil.value(this.severity)) return
-    console.log('past severity');
     const stackTrace = (SeverityUtil.value(severity) <= SeverityUtil.value(this.callStackSeverity)) ? new Error().stack : undefined;
     const message = new Message( msg, severity, this.tag, stackTrace, e, func, file,  line);
     LogManager.push(message);

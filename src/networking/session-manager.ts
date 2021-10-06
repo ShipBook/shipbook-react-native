@@ -8,8 +8,8 @@ import ConnectionClient from "./connection-client";
 
 class SessionManager {
   token?: string;
-  private loginObj?: Login;
-  private user?: User;
+  loginObj?: Login;
+  user?: User;
   private isInLoginRequest = false;
   async login(appId: string, appKey: string) {
     // TODD save config
