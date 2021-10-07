@@ -1,3 +1,4 @@
+import InnerLog from "../inner-log";
 import BaseLog, { LogType } from "../models/base-log";
 import Login from "../models/login";
 import Message from "../models/message";
@@ -47,43 +48,37 @@ export default class SBCloudAppender implements BaseAppender {
     // throw new Error("Method not implemented.");
   }
   async push(log: BaseLog): Promise<void> {
-    console.log('push log');
     if (log.type == LogType.Message) {
-      console.log('before await');
       const message = await (<Message>log).getObj();
-      console.log('after await');
       this.flushQueue.push(log);
       if (SeverityUtil.value(this.flushSeverity) < SeverityUtil.value(message.severity)) {
-        console.log('entered fludh queue');
+        InnerLog.d('entered flush queue');
         
         if (this.flushQueue.length > this.flushSize) {
           this.flushQueue.shift();
         }
       }
       else { // the info needs to be flushed and saved
-        console.log('entered save');
+        InnerLog.d('entered save');
         const flushQueue = this.flushQueue;
         this.flushQueue = [];
         await this.saveLogs(flushQueue);
-        console.log('before timer');
         this.createTimer();
-        console.log('after timer');
       }
     }
   }
   flush(): void {
-    console.log('flushed logs');
+    InnerLog.d('flushed logs');
     this.send();
   }
 
   private async send() {
-    console.log('entered send')
+    InnerLog.d('entered send')
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
 
-    console.log('after emptying timer ')
     if (!SessionManager.token) return;
 
 
@@ -92,18 +87,18 @@ export default class SBCloudAppender implements BaseAppender {
     const resp = await ConnectionClient.request('sessions/uploadSavedData', sessionsData, HttpMethod.POST);
     if (resp.ok) {
       const text = await resp.text()
-      console.log('got ok of upload ' + text)
+      InnerLog.i('got ok of upload ' + text)
 
     }
     else {
       const text = await resp.text()
-      console.log('got not ok of upload '+ text);
+      InnerLog.e('got not ok of upload '+ text);
     }
   }
 
   private async loadSessionData() {
     let storageData = <StorageData[]> await storage.popAllArrayObj(SESSION_DATA)
-    console.log('storage data',storageData);
+    this.hasLog = false;
     let sessionsData : SessionData[] = [];
     let sessionData: SessionData | undefined = undefined;
 
@@ -124,13 +119,13 @@ export default class SBCloudAppender implements BaseAppender {
           sessionData!.user = data.data;
           break;
         default: // it is a log
+          if (!sessionData) InnerLog.e('session data is empty', storageData);
           sessionData!.logs.push(data.data);
           break;
       }
     }
 
     if (sessionData) sessionsData.push(sessionData);
-    console.log('session data', sessionsData);
     return sessionsData;
   }
 
@@ -159,8 +154,6 @@ export default class SBCloudAppender implements BaseAppender {
         data: log
       });
     });
-    console.log('logs', logs);
-    console.log('storage data', storageData);
     await storage.pushArrayObj(SESSION_DATA, storageData);
   }
   

@@ -1,4 +1,5 @@
 import { CONNECTED, eventEmitter } from "../event-emitter";
+import InnerLog from "../inner-log";
 import logManager from "../log-manager";
 import Login from "../models/login";
 import User from "../models/user";
@@ -33,7 +34,7 @@ class SessionManager {
   
       if (resp.ok) {
         const json = await resp.json();
-        console.log('Succeeded! : ' + JSON.stringify(json));
+        InnerLog.i('Succeeded! : ' + JSON.stringify(json));
         this.token = json.token;
     
         // set config information
@@ -45,17 +46,17 @@ class SessionManager {
         return json.sessionUrl;  
       }
       else {
-        console.log('didn\'t succeed to log')
+        InnerLog.e('didn\'t succeed to log')
         const text = await resp.text();
         if (text) {
-          console.log('the info that was received: ' + text)
+          InnerLog.e('the info that was received: ' + text)
         }
         return;
       }
   
     }
     catch (e) {
-      console.log('there was an error with the request', e);
+      InnerLog.e('there was an error with the request', e);
     }
   }
 

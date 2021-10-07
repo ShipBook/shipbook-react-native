@@ -1,5 +1,5 @@
-// import AsyncStorage from '@react-native-async-storage/async-storage';
-const  AsyncStorage = require('@react-native-async-storage/async-storage'); //using require so mock from jest will work
+import AsyncStorage from '@react-native-async-storage/async-storage';
+// const  AsyncStorage = require('@react-native-async-storage/async-storage'); //using require so mock from jest will work
 
 class Storage {
   async setItem(key: string, value: string) {
@@ -43,7 +43,6 @@ class Storage {
     }
 
     valuePairs.push([`${key}_size`, size.toString()]);
-    // console.log('value pairs ', valuePairs);
     await AsyncStorage.multiSet(valuePairs);
   }
 
@@ -55,9 +54,7 @@ class Storage {
     for (let i = 0; i < size; ++i) {
       keys.push(`${key}_${i}`);
     }
-    // console.log('keys', keys);
     const values = <string[][]>await AsyncStorage.multiGet(keys);
-    // console.log('values', values);
     const objects = values.map(value => typeof(value[1]) === 'string' ? JSON.parse(value[1]): undefined);
     keys.push(`${key}_size`);
     await AsyncStorage.multiRemove(keys);

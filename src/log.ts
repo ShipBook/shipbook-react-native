@@ -1,4 +1,5 @@
 import { CONFIG_CHANGE, eventEmitter } from "./event-emitter";
+import InnerLog from "./inner-log";
 import LogManager from "./log-manager";
 import Message from "./models/message";
 import { Severity, SeverityUtil } from "./models/severity";
@@ -14,7 +15,7 @@ export default class Log {
     this.severity = LogManager.getSeverity(tag);
     this.callStackSeverity = LogManager.getCallStackSeverity(tag);
     eventEmitter.addListener(CONFIG_CHANGE, () => {
-      console.log('config changed');
+      InnerLog.i('config changed');
       this.severity = LogManager.getSeverity(tag);
       this.callStackSeverity = LogManager.getCallStackSeverity(tag);  
     });

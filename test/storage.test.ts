@@ -1,5 +1,3 @@
-// const  AsyncStorage = require('@react-native-async-storage/async-storage');
-
 import storage from "../src/storage";
 
 describe('storage unit tests', () => {

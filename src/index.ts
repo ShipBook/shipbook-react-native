@@ -1,3 +1,4 @@
+import InnerLog from "./inner-log";
 import Log from "./log";
 import connectionClient from "./networking/connection-client";
 import sessionManager from "./networking/session-manager";
@@ -8,7 +9,7 @@ export default class Shipbook {
   }
 
   static enableInnerLog(enable: boolean) {
-
+    InnerLog.enabled = enable;
   }
 
   static setConnectionUrl(url: string) {
@@ -24,7 +25,6 @@ export default class Shipbook {
   }
 
   static getLogger(tag: string) {
-    console.log('entered get logger');
     return new Log(tag);
   }
 
