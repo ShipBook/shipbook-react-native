@@ -13,7 +13,7 @@ export default class Message extends BaseLog {
   fileName?: string;
   lineNumber?: number;
 
-  private resolve?: (message:Message) => void; 
+  private resolveList: ((message:Message) => void)[] = []; 
   private stackReceived = false;
 
   constructor(message: string,
@@ -54,7 +54,8 @@ export default class Message extends BaseLog {
           this.tag = this.fileName?.substring(index! + 1) ?? '<unknown>';
         }
         this.stackReceived = true;
-        if (this.resolve) this.resolve(this);
+        this.resolveList.forEach(resolve => resolve(this));
+        this.resolveList = [];
       });
     }
 
@@ -65,7 +66,7 @@ export default class Message extends BaseLog {
   async getObj(): Promise<Message> {
     if (!this.stackReceived) {
       let promise = new Promise<Message>((resolve) => {
-        this.resolve = resolve;
+        this.resolveList.push(resolve);
       })
 
       return promise;

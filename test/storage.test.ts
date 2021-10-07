@@ -1,35 +1,35 @@
-const AsyncStorage = require('@react-native-async-storage/async-storage');
+// const  AsyncStorage = require('@react-native-async-storage/async-storage');
 
 import storage from "../src/storage";
 
 describe('storage unit tests', () => {
-  beforeEach(async () => {
-    await AsyncStorage.setItem('test', 'wow');
-  })
+  test('should be string value', async () => {
+    const key = "testString"
+    const value = 'value';
 
-  it('checks if Async Storage is used', async () => {
-    const value = await AsyncStorage.getItem('test');
-    expect(value).toBe('wow');
-  })
+    await storage.setItem(key, value);
+    expect(storage.getItem(key)).resolves.toEqual(value);
+  });
 
-  // beforeEach(async () => {
-  //   await AsyncStorage.setItem('test', 'wow');
-  //   await storage.setItem("testString", "value");
-  //   await storage.setObj("testObj", {value: "value"});
-  //   await storage.pushArrayObj("testArray", {value: "value1"});
-  //   await storage.pushArrayObj("testArray", {value: "value2"});
-    
-  // });
+  test('should be object with value', async () => {
+    const key = "testObj"
+    const value = {value: "value"};
 
-  // test('should be string value', async () => {
-  //   const value = await storage.getItem("testString");
-  //   expect(value).toBe('value');
-  // });
+    await storage.setObj(key, value);
 
-  // test('should be object with value', async () => {
-  //   const value = await storage.getItem("testObj");
-  //   expect(value).toBe({value: "value"});
-  // });
+    await expect(storage.getObj(key)).resolves.toEqual(value);
+  });
 
-  
+
+  test('should be array of objects with value', async () => {
+    const key = "testArray"
+    const array  = [
+      {value: "value1"},
+      {value: "value2"}
+    ];
+    await storage.pushArrayObj(key, array[0]);
+    await storage.pushArrayObj(key, array[1]);
+    await expect(storage.arraySize(key)).resolves.toEqual(array.length);
+    await expect(storage.popAllArrayObj(key)).resolves.toEqual(array);
+  });
 });
