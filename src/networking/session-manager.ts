@@ -14,15 +14,11 @@ class SessionManager {
   user?: User;
   private isInLoginRequest = false;
   async login(appId: string, appKey: string) {
-    // TODD save config
-
     const config = <ConfigResponse> await storage.getObj("config");
     if (config) {
-      exceptionManager.start();
-      // if (!config.exceptionReportDisabled) exceptionManager.start();
+      if (!config.exceptionReportDisabled) exceptionManager.start();
       logManager.config(config);
     }
-
 
     this.loginObj = new Login(appId, appKey);
     return this.innerLogin();
