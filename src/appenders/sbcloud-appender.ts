@@ -1,5 +1,6 @@
 import InnerLog from "../inner-log";
 import BaseLog, { LogType } from "../models/base-log";
+import Exception from "../models/exception";
 import Login from "../models/login";
 import Message from "../models/message";
 import { Severity, SeverityUtil } from "../models/severity";
@@ -50,7 +51,7 @@ export default class SBCloudAppender implements BaseAppender {
   async push(log: BaseLog): Promise<void> {
     if (log.type == LogType.Message) {
       const message = await (<Message>log).getObj();
-      this.flushQueue.push(log);
+      this.flushQueue.push(message);
       if (SeverityUtil.value(this.flushSeverity) < SeverityUtil.value(message.severity)) {
         InnerLog.d('entered flush queue');
         
@@ -60,11 +61,18 @@ export default class SBCloudAppender implements BaseAppender {
       }
       else { // the info needs to be flushed and saved
         InnerLog.d('entered save');
-        const flushQueue = this.flushQueue;
+        const flushQueue = [...this.flushQueue];
         this.flushQueue = [];
         await this.saveLogs(flushQueue);
         this.createTimer();
       }
+    }
+    else if (log.type == LogType.Exception) {
+      this.flushQueue.push(log);
+      const flushQueue = [...this.flushQueue];
+      this.flushQueue = [];
+      await this.saveLogs(flushQueue);
+      this.createTimer();
     }
   }
   flush(): void {
@@ -117,6 +125,11 @@ export default class SBCloudAppender implements BaseAppender {
 
         case DataType.User:
           sessionData!.user = data.data;
+          break;
+        case LogType.Exception:
+          const {name, reason, stack} = data.data;
+          let exception = await (new Exception(name, reason, stack)).getObj();
+          sessionData!.logs.push(exception);
           break;
         default: // it is a log
           if (!sessionData) InnerLog.e('session data is empty', storageData);

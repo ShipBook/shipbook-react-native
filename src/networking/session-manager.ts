@@ -1,4 +1,5 @@
 import { CONNECTED, eventEmitter } from "../event-emitter";
+import exceptionManager from "../exception-manager";
 import InnerLog from "../inner-log";
 import logManager from "../log-manager";
 import Login from "../models/login";
@@ -15,8 +16,13 @@ class SessionManager {
   async login(appId: string, appKey: string) {
     // TODD save config
 
-    const config = await storage.getObj("config");
-    if (config) logManager.config(config);
+    const config = <ConfigResponse> await storage.getObj("config");
+    if (config) {
+      exceptionManager.start();
+      // if (!config.exceptionReportDisabled) exceptionManager.start();
+      logManager.config(config);
+    }
+
 
     this.loginObj = new Login(appId, appKey);
     return this.innerLogin();

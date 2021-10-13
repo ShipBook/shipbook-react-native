@@ -1,5 +1,6 @@
 export enum LogType {
   Message = 'message', 
+  Exception = 'exception'
 }
 
 export default class BaseLog {
