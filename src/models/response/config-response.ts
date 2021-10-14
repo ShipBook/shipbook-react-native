@@ -11,7 +11,7 @@ interface ConfigResponse {
 interface AppenderResponse {
   type: string;
   name: string;
-  config?: ConfigResponse;
+  config?: any;
   
 }
 

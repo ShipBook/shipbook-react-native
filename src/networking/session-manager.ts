@@ -8,18 +8,47 @@ import storage from "../storage";
 import connectionClient, { HttpMethod } from "./connection-client";
 import ConnectionClient from "./connection-client";
 
+const defaultConfig: ConfigResponse= {
+  appenders: [
+    {
+      type: "ConsoleAppender",
+      name: "console",
+      config : { pattern: "$message" }
+    },
+    {
+      type: "SBCloudAppender",
+      name: "cloud",
+      config: {
+        maxTime: 5,
+        flushSeverity: "Warning"
+      }
+    }
+  ],
+  loggers: [
+    {
+      name: "",
+      severity: "Verbose",
+      appenderRef: "console"
+    },
+    {
+      name: "",
+      severity: "Verbose",
+      appenderRef : "cloud"
+   }
+  ]
+}
 class SessionManager {
   token?: string;
   loginObj?: Login;
   user?: User;
   private isInLoginRequest = false;
   async login(appId: string, appKey: string) {
-    const config = <ConfigResponse> await storage.getObj("config");
-    if (config) {
-      if (!config.exceptionReportDisabled) exceptionManager.start();
-      logManager.config(config);
-    }
+    let config = <ConfigResponse> await storage.getObj("config");
+    if (!config) config = defaultConfig;
 
+    if (!config.exceptionReportDisabled) exceptionManager.start();
+    logManager.config(config);
+    
     this.loginObj = new Login(appId, appKey);
     return this.innerLogin();
 
