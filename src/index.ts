@@ -1,5 +1,7 @@
 import InnerLog from "./inner-log";
 import Log from "./log";
+import logManager from "./log-manager";
+import ScreenEvent from "./models/screen-event";
 import connectionClient from "./networking/connection-client";
 import sessionManager from "./networking/session-manager";
 
@@ -17,11 +19,11 @@ export default class Shipbook {
   }
 
   static registerUser(userId: string, userName?: string, fullName?: string, email?: string, phoneNumber?: string, additionalInfo?: object) {
-
+    sessionManager.registerUser(userId, userName, fullName, email, phoneNumber, additionalInfo);
   }
 
   static logout() {
-
+    sessionManager.logout();
   }
 
   static getLogger(tag: string) {
@@ -29,10 +31,11 @@ export default class Shipbook {
   }
 
   static flush() {
-
+    logManager.flush();
   }
 
   static screen(name: string) {
-
+    const event = new ScreenEvent(name);
+    logManager.push(event);
   }
 }

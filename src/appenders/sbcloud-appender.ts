@@ -1,4 +1,5 @@
 import InnerLog from "../inner-log";
+import BaseEvent from "../models/base-event";
 import BaseLog, { LogType } from "../models/base-log";
 import Exception from "../models/exception";
 import Login from "../models/login";
@@ -48,33 +49,47 @@ export default class SBCloudAppender implements BaseAppender {
   update(config?: ConfigResponse): void {
     // throw new Error("Method not implemented.");
   }
+  
   async push(log: BaseLog): Promise<void> {
-    if (log.type == LogType.Message) {
-      const message = await (<Message>log).getObj();
-      this.flushQueue.push(message);
-      if (SeverityUtil.value(this.flushSeverity) < SeverityUtil.value(message.severity)) {
-        InnerLog.d('entered flush queue');
-        
-        if (this.flushQueue.length > this.flushSize) {
-          this.flushQueue.shift();
-        }
-      }
-      else { // the info needs to be flushed and saved
-        InnerLog.d('entered save');
-        const flushQueue = [...this.flushQueue];
-        this.flushQueue = [];
-        await this.saveLogs(flushQueue);
-        this.createTimer();
+    if (log.type == LogType.Message) await this.pushMessage(<Message>log);
+    else if (log.type == LogType.Exception) await this.pushException(<Exception>log);
+    else await this.pushEvent(log);
+  }
+
+  private async pushMessage(log: Message) {
+    const message = await log.getObj();
+    this.flushQueue.push(message);
+    if (SeverityUtil.value(this.flushSeverity) < SeverityUtil.value(message.severity)) {
+      InnerLog.d('entered flush queue');
+      
+      if (this.flushQueue.length > this.flushSize) {
+        this.flushQueue.shift();
       }
     }
-    else if (log.type == LogType.Exception) {
-      this.flushQueue.push(log);
+    else { // the info needs to be flushed and saved
+      InnerLog.d('entered save');
       const flushQueue = [...this.flushQueue];
       this.flushQueue = [];
       await this.saveLogs(flushQueue);
       this.createTimer();
     }
+
   }
+
+  private async pushException(exception: Exception) {
+    this.flushQueue.push(exception);
+    const flushQueue = [...this.flushQueue];
+    this.flushQueue = [];
+    await this.saveLogs(flushQueue);
+  }
+
+  private async pushEvent(event: BaseEvent) {
+    this.flushQueue.push(event);
+    if (this.flushQueue.length > this.flushSize) {
+      this.flushQueue.shift();
+    }
+  }
+
   flush(): void {
     InnerLog.d('flushed logs');
     this.send();

@@ -1,4 +1,5 @@
 import { CONNECTED, eventEmitter } from "../event-emitter";
+import eventManager from "../event-manager";
 import exceptionManager from "../exception-manager";
 import InnerLog from "../inner-log";
 import logManager from "../log-manager";
@@ -46,9 +47,8 @@ class SessionManager {
     let config = <ConfigResponse> await storage.getObj("config");
     if (!config) config = defaultConfig;
 
-    if (!config.exceptionReportDisabled) exceptionManager.start();
-    logManager.config(config);
-    
+    this.readConfig(config);
+
     this.loginObj = new Login(appId, appKey);
     return this.innerLogin();
 
@@ -69,7 +69,7 @@ class SessionManager {
         this.token = json.token;
     
         // set config information
-        logManager.config(json.config);
+        this.readConfig(json.config);
         eventEmitter.emit(CONNECTED);
   
         storage.setObj('config', json.config);
@@ -91,8 +91,17 @@ class SessionManager {
     }
   }
 
-  logout() {
+  private readConfig(config: ConfigResponse) {
+    if (!config.exceptionReportDisabled) exceptionManager.start();
+    if (!config.eventLoggingDisabled) eventManager.enableAppState();
+    else eventManager.removeAppState();
+    logManager.config(config);
+  }
 
+  logout() {
+    this.token = undefined; 
+    this.loginObj = undefined;
+    this.user = undefined;
   }
 
   registerUser(userId: string, 
@@ -104,8 +113,6 @@ class SessionManager {
     this.user = {
       userId, userName, fullName, email, phoneNumber, additionalInfo
     };
-
-
   }
 
   async refreshToken() {
