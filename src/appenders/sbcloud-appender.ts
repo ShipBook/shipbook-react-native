@@ -1,3 +1,5 @@
+import { AppState, AppStateStatus, NativeEventSubscription } from "react-native";
+
 import InnerLog from "../inner-log";
 import BaseEvent from "../models/base-event";
 import BaseLog, { LogType } from "../models/base-log";
@@ -10,7 +12,6 @@ import ConnectionClient, { HttpMethod } from "../networking/connection-client";
 import SessionManager from "../networking/session-manager";
 import storage from "../storage";
 import { BaseAppender } from "./base-appender";
-
 
 enum DataType {
   Token = 'token',
@@ -36,18 +37,42 @@ export default class SBCloudAppender implements BaseAppender {
   private maxTime = 3;
   private flushSeverity = Severity.Verbose;
   private flushSize = 1000;
+  private maxLogSize = 5000;
 
   private flushQueue: BaseLog[] = [];
   private timer?:  NodeJS.Timeout;
   private hasLog: boolean = false;
+  private appStateSubscription?: NativeEventSubscription; 
+  private eventListener = async (state: AppStateStatus) => {
+    InnerLog.d('Got state change: ' + state);
+    if (state == 'background') {
+      InnerLog.d('entered background');
+      await this.send();
+    }
+  };
 
+  static started = false;
   constructor(name: string, config?: ConfigResponse) {
     this.name = name;
     this.update(config);
+    InnerLog.d('constructor called');
+    let appStateSubscription = AppState.addEventListener("change", this.eventListener);
+    InnerLog.d('constructor called with', appStateSubscription);
+    SBCloudAppender.started = true;
   }
 
-  update(config?: ConfigResponse): void {
-    // throw new Error("Method not implemented.");
+  destructor(): void { 
+    InnerLog.d('destructor called', this.appStateSubscription);
+    if (this.appStateSubscription) this.appStateSubscription.remove();
+    else AppState.removeEventListener('change', this.eventListener); //for old versions or expo
+    this.appStateSubscription = undefined;
+  }
+
+
+  update(config?: any): void {
+    this.maxTime = config.maxTime ?? this.maxTime; 
+    this.flushSeverity = config.flushSeverity ? (<any>Severity)[config.flushSeverity] :  this.flushSeverity;
+    this.flushSize = config.flushSize ?? this.flushSize;
   }
   
   async push(log: BaseLog): Promise<void> {
@@ -105,8 +130,8 @@ export default class SBCloudAppender implements BaseAppender {
     if (!SessionManager.token) return;
 
 
-    let sessionsData = await this.loadSessionData();
-        
+    const sessionsData = await this.loadSessionData();
+    if (sessionsData.length == 0) return;
     const resp = await ConnectionClient.request('sessions/uploadSavedData', sessionsData, HttpMethod.POST);
     if (resp.ok) {
       const text = await resp.text()
@@ -125,7 +150,7 @@ export default class SBCloudAppender implements BaseAppender {
     let sessionsData : SessionData[] = [];
     let sessionData: SessionData | undefined = undefined;
 
-    if (storageData.length === 0) return;
+    if (storageData.length === 0) return [];
     for (let data of storageData) {
       switch (data.type) {
         case DataType.Token:
@@ -158,6 +183,9 @@ export default class SBCloudAppender implements BaseAppender {
   }
 
   private async saveLogs(logs: BaseLog[]) {
+    let size = await storage.arraySize(SESSION_DATA);
+    if (size > this.maxLogSize) await storage.popAllArrayObj(SESSION_DATA); // pop also deletes all
+
     let storageData: StorageData[] = [];
     if (!this.hasLog) {
       this.hasLog = true;

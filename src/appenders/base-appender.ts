@@ -5,4 +5,5 @@ export interface BaseAppender {
   update(config?: ConfigResponse): void;
   push(log: BaseLog): void;
   flush(): void;
+  destructor(): void;
 }

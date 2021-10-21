@@ -40,4 +40,6 @@ export default class ConsoleAppender implements BaseAppender {
   }
   flush(): void {
   }
+  destructor(): void {
+  }
 }

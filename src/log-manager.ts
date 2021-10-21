@@ -16,19 +16,25 @@ interface Logger {
 
 
 class LogManager {
-  appenders = new Map<string, BaseAppender>() ;
-  loggers: Logger[]= [];
+  private appenders = new Map<string, BaseAppender>() ;
+  private loggers: Logger[]= [];
 
   clear() {
+    this.appenders.forEach(appender => appender.destructor());
+    InnerLog.d('called clear');
     this.appenders.clear();
     this.loggers = [];
   }
 
   add(appender: BaseAppender, name: string) {
+    const origAppender = this.appenders.get(name);
+    if (appender != origAppender) appender?.destructor();
     this.appenders.set(name, appender);
   }
 
   remove(appenderName: string) {
+    const appender = this.appenders.get(appenderName);
+    appender?.destructor();
     this.appenders.delete(appenderName);
   }
 
@@ -75,7 +81,7 @@ class LogManager {
 
   config(conf: ConfigResponse) {
     // appenders
-    this.appenders = new Map<string, BaseAppender>();
+    this.clear();
     conf.appenders.forEach(appender => {
       try {
         const base = AppenderFactory.create(appender.type, appender.name, appender.config)  
