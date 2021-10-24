@@ -1,15 +1,28 @@
 {
   "name": "shipbook-react-native",
-  "version": "0.1.0",
-  "description": "",
-  "main": "index.js",
+  "version": "0.1.2",
+  "description": "Shipbook gives you the power to remotely gather, search and analyze your user logs and exceptions in the cloud, on a per-user & session basis.",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib/**/*"
+  ],
   "scripts": {
     "test": "jest",
     "build": "tsc"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ShipBook/shipbook-react-native.git"
+  },
+  "homepage": "https://www.shipbook.io/",
+  "keywords": [
+    "shipbook",
+    "react-native",
+    "log"
+  ],
+  "author": "Elisha Sterngold",
+  "license": "MIT",
   "devDependencies": {
     "@types/jest": "^27.0.1",
     "@types/react-native": "^0.65.3",
