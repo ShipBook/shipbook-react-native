@@ -60,7 +60,8 @@ class SessionManager {
     this.isInLoginRequest = true;
     this.token = undefined;
     try {
-      const resp = await ConnectionClient.request('auth/loginSdk', this.loginObj, HttpMethod.POST);
+      const loginObj = await this.loginObj.getObj();
+      const resp = await ConnectionClient.request('auth/loginSdk', loginObj, HttpMethod.POST);
       this.isInLoginRequest = false;
   
       if (resp.ok) {
@@ -128,6 +129,10 @@ class SessionManager {
       return true;
     }
     else return false;
+  }
+
+  getUUID() {
+    return this.loginObj?.udid;
   }
 }
 

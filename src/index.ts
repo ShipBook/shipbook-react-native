@@ -38,4 +38,8 @@ export default class Shipbook {
     const event = new ScreenEvent(name);
     logManager.push(event);
   }
+
+  static getUUID() {
+    return sessionManager.getUUID();
+  }
 }

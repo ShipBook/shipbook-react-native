@@ -13,6 +13,7 @@
   "devDependencies": {
     "@types/jest": "^27.0.1",
     "@types/react-native": "^0.65.3",
+    "@types/uuid": "^8.3.1",
     "jest": "^27.1.1",
     "react-native": "^0.65.0",
     "ts-jest": "^27.0.5"
@@ -20,6 +21,7 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.15.8",
     "eventemitter3": "^3.1.2",
-    "stacktrace-parser": "^0.1.10"
+    "stacktrace-parser": "^0.1.10",
+    "uuid": "^3.4.0"
   }
 }
