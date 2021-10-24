@@ -1,4 +1,5 @@
 import { AppState, AppStateStatus, NativeEventSubscription } from "react-native";
+import innerLog from "../inner-log";
 
 import InnerLog from "../inner-log";
 import BaseEvent from "../models/base-event";
@@ -10,6 +11,7 @@ import { Severity, SeverityUtil } from "../models/severity";
 import User from "../models/user";
 import ConnectionClient, { HttpMethod } from "../networking/connection-client";
 import SessionManager from "../networking/session-manager";
+import { AutoQueue } from "../queue";
 import storage from "../storage";
 import { BaseAppender } from "./base-appender";
 
@@ -52,12 +54,11 @@ export default class SBCloudAppender implements BaseAppender {
   };
 
   static started = false;
+  private aQueue = new AutoQueue();
   constructor(name: string, config?: ConfigResponse) {
     this.name = name;
     this.update(config);
-    InnerLog.d('constructor called');
-    let appStateSubscription = AppState.addEventListener("change", this.eventListener);
-    InnerLog.d('constructor called with', appStateSubscription);
+    this.appStateSubscription = AppState.addEventListener("change", this.eventListener);
     SBCloudAppender.started = true;
   }
 
@@ -145,7 +146,7 @@ export default class SBCloudAppender implements BaseAppender {
   }
 
   private async loadSessionData() {
-    let storageData = <StorageData[]> await storage.popAllArrayObj(SESSION_DATA)
+    let storageData = <StorageData[]> await storage.popAllArrayObj(SESSION_DATA);
     this.hasLog = false;
     let sessionsData : SessionData[] = [];
     let sessionData: SessionData | undefined = undefined;
@@ -210,10 +211,10 @@ export default class SBCloudAppender implements BaseAppender {
         data: log
       });
     });
-    await storage.pushArrayObj(SESSION_DATA, storageData);
+    const task = async ()=> await storage.pushArrayObj(SESSION_DATA, storageData);
+    await this.aQueue.enqueue(task);
   }
   
-
   private createTimer() {
     if (this.timer) return;
     this.timer = setTimeout(() => {

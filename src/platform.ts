@@ -1,5 +1,6 @@
 
 import { Platform as ReactPlatform, PlatformAndroidStatic, Dimensions } from 'react-native';
+import innerLog from './inner-log';
 
 class Platform {
   isPortrait() {
@@ -21,10 +22,11 @@ class Platform {
     }
     else return '';
   }
-  get Manufacturer() {
+  get manufacturer() {
+    innerLog.d(`the platform , ${JSON.stringify(ReactPlatform.constants)}`)
     if (ReactPlatform.OS == 'android') {
       const p: PlatformAndroidStatic = ReactPlatform;
-      return p.constants.Manufacturer;
+      return p.constants.Manufacturer ?? 'google';
     }
     else return 'apple';
   }

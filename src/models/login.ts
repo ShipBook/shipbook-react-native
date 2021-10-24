@@ -1,6 +1,7 @@
 // https://github.com/react-native-device-info/react-native-device-info#getuniqueid
 
 import { Platform } from 'react-native';
+import platform from '../platform';
 import User from "./user";
 
 
@@ -18,9 +19,9 @@ export default class Login {
   appBuild: string = '';
   sdkVersion: string = '';
   sdkBuild: string = '';
-  manufacturer: string = '';
+  manufacturer: string = platform.manufacturer;
   deviceName: string = '';
-  deviceModel: string = '';
+  deviceModel: string = platform.model;
   language: string = '';
   isDebug?: boolean;
   user?: User;
