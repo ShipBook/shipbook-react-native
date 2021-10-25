@@ -1,5 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-// const  AsyncStorage = require('@react-native-async-storage/async-storage'); //using require so mock from jest will work
+// import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AsyncStorage } from 'react-native';
+
 
 class Storage {
   async setItem(key: string, value: string) {
