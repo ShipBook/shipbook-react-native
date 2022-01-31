@@ -42,16 +42,20 @@ class SessionManager {
   token?: string;
   loginObj?: Login;
   user?: User;
+
+  appId?: string;
+  appKey?: string;
+
   private isInLoginRequest = false;
   async login(appId: string, appKey: string) {
     let config = <ConfigResponse> await storage.getObj("config");
     if (!config) config = defaultConfig;
 
     this.readConfig(config);
-
+    this.appId = appId;
+    this.appKey = appKey;
     this.loginObj = new Login(appId, appKey);
     return this.innerLogin();
-
   }
 
   async innerLogin(): Promise<string | undefined> {
@@ -101,8 +105,9 @@ class SessionManager {
 
   logout() {
     this.token = undefined; 
-    this.loginObj = undefined;
     this.user = undefined;
+    if (this.loginObj) this.loginObj = new Login(this.appId!, this.appKey!);
+    this.innerLogin();
   }
 
   registerUser(userId: string, 
