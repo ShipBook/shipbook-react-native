@@ -39,7 +39,7 @@ export default class Message extends BaseLog {
       const stackString = new Error().stack!;
       let stack = stackTraceParser.parse(stackString);
       stack.splice(0,3);
-      const symbolicateStackTrace = require("react-native/Libraries/Core/Devtools/symbolicateStackTrace");
+      const symbolicateStackTrace = (stack: stackTraceParser.StackFrame[]) => new Promise(resolve => resolve({stack}));
       symbolicateStackTrace(stack).then((stackTrace: any) => {
         stack = stackTrace.stack;
         const frame = stack.find(f => !Message.ignoreClasses.has(f.methodName)); // TODO: not correct
