@@ -1,5 +1,4 @@
 import { AppState, AppStateStatus, NativeEventSubscription } from "react-native";
-import innerLog from "../inner-log";
 
 import InnerLog from "../inner-log";
 import BaseEvent from "../models/base-event";
@@ -14,6 +13,7 @@ import SessionManager from "../networking/session-manager";
 import { AutoQueue } from "../queue";
 import storage from "../storage";
 import { BaseAppender } from "./base-appender";
+import { USER_CHANGE, eventEmitter } from "../event-emitter";
 
 enum DataType {
   Token = 'token',
@@ -55,11 +55,18 @@ export default class SBCloudAppender implements BaseAppender {
 
   static started = false;
   private aQueue = new AutoQueue();
+
   constructor(name: string, config?: ConfigResponse) {
     this.name = name;
     this.update(config);
     this.appStateSubscription = AppState.addEventListener("change", this.eventListener);
     SBCloudAppender.started = true;
+
+    InnerLog.i("SBCloud constructor2");
+
+    this.changeUser = this.changeUser.bind(this);
+    eventEmitter.addListener(USER_CHANGE, this.changeUser);
+    
   }
 
   destructor(): void { 
@@ -67,8 +74,17 @@ export default class SBCloudAppender implements BaseAppender {
     if (this.appStateSubscription) this.appStateSubscription.remove();
     else AppState.removeEventListener('change', this.eventListener); //for old versions or expo
     this.appStateSubscription = undefined;
+    eventEmitter.removeListener(USER_CHANGE, this.changeUser);
   }
 
+  private  changeUser() {
+    InnerLog.i('user changed');
+    let user = SessionManager.user;
+    if (user) {
+      this.saveToStorage(user);
+      this.createTimer();
+    }
+  }
 
   update(config?: any): void {
     this.maxTime = config.maxTime ?? this.maxTime; 
@@ -96,7 +112,7 @@ export default class SBCloudAppender implements BaseAppender {
       InnerLog.d('entered save');
       const flushQueue = [...this.flushQueue];
       this.flushQueue = [];
-      await this.saveLogs(flushQueue);
+      await this.saveToStorage(flushQueue);
       this.createTimer();
     }
 
@@ -106,7 +122,7 @@ export default class SBCloudAppender implements BaseAppender {
     this.flushQueue.push(exception);
     const flushQueue = [...this.flushQueue];
     this.flushQueue = [];
-    await this.saveLogs(flushQueue);
+    await this.saveToStorage(flushQueue);
   }
 
   private async pushEvent(event: BaseEvent) {
@@ -132,6 +148,7 @@ export default class SBCloudAppender implements BaseAppender {
 
 
     const sessionsData = await this.loadSessionData();
+    InnerLog.i("the sessions data is:", sessionsData);
     if (sessionsData.length == 0) return;
     const resp = await ConnectionClient.request('sessions/uploadSavedData', sessionsData, HttpMethod.POST);
     if (resp.ok) {
@@ -166,6 +183,7 @@ export default class SBCloudAppender implements BaseAppender {
 
         case DataType.User:
           sessionData!.user = data.data;
+          InnerLog.i('the user data', sessionData?.user);
           break;
         case LogType.Exception:
           const {name, reason, stack} = data.data;
@@ -183,7 +201,7 @@ export default class SBCloudAppender implements BaseAppender {
     return sessionsData;
   }
 
-  private async saveLogs(logs: BaseLog[]) {
+  private async saveToStorage(data: BaseLog[] | User) {
     let size = await storage.arraySize(SESSION_DATA);
     if (size > this.maxLogSize) await storage.popAllArrayObj(SESSION_DATA); // pop also deletes all
 
@@ -204,13 +222,23 @@ export default class SBCloudAppender implements BaseAppender {
         });
       }
     }
-
-    logs.forEach(log => {
-      storageData.push({
-        type: log.type,
-        data: log
+    
+    if (Array.isArray(data)) {
+      let logs = <BaseLog[]>data;
+      logs.forEach(log => {
+        storageData.push({
+          type: log.type,
+          data: log
+        });
       });
-    });
+    }
+    else { // User 
+      storageData.push({
+        type: DataType.User,
+        data
+      });
+    }
+    
     const task = async ()=> await storage.pushArrayObj(SESSION_DATA, storageData);
     await this.aQueue.enqueue(task);
   }

@@ -1,4 +1,4 @@
-import { CONNECTED, eventEmitter } from "../event-emitter";
+import { CONNECTED, USER_CHANGE, eventEmitter } from "../event-emitter";
 import eventManager from "../event-manager";
 import exceptionManager from "../exception-manager";
 import InnerLog from "../inner-log";
@@ -40,7 +40,17 @@ const defaultConfig: ConfigResponse= {
 }
 class SessionManager {
   token?: string;
-  loginObj?: Login;
+  _loginObj?: Login;
+
+  get loginObj () {
+    if (this._loginObj) this._loginObj.user = this.user;
+    return this._loginObj;
+  }
+  
+  set loginObj(loginObj: Login | undefined) {
+    this._loginObj = loginObj
+  }
+
   user?: User;
 
   appId?: string;
@@ -119,6 +129,8 @@ class SessionManager {
     this.user = {
       userId, userName, fullName, email, phoneNumber, additionalInfo
     };
+    if (this._loginObj) eventEmitter.emit(USER_CHANGE);
+    
   }
 
   async refreshToken() {
