@@ -55,18 +55,14 @@ export default class SBCloudAppender implements BaseAppender {
 
   static started = false;
   private aQueue = new AutoQueue();
-
   constructor(name: string, config?: ConfigResponse) {
     this.name = name;
     this.update(config);
     this.appStateSubscription = AppState.addEventListener("change", this.eventListener);
     SBCloudAppender.started = true;
 
-    InnerLog.i("SBCloud constructor2");
-
     this.changeUser = this.changeUser.bind(this);
     eventEmitter.addListener(USER_CHANGE, this.changeUser);
-    
   }
 
   destructor(): void { 
@@ -148,7 +144,6 @@ export default class SBCloudAppender implements BaseAppender {
 
 
     const sessionsData = await this.loadSessionData();
-    InnerLog.i("the sessions data is:", sessionsData);
     if (sessionsData.length == 0) return;
     const resp = await ConnectionClient.request('sessions/uploadSavedData', sessionsData, HttpMethod.POST);
     if (resp.ok) {
