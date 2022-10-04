@@ -13,7 +13,7 @@ import SessionManager from "../networking/session-manager";
 import { AutoQueue } from "../queue";
 import storage from "../storage";
 import { BaseAppender } from "./base-appender";
-import { USER_CHANGE, eventEmitter } from "../event-emitter";
+import { USER_CHANGE, CONNECTED, eventEmitter } from "../event-emitter";
 
 enum DataType {
   Token = 'token',
@@ -62,7 +62,9 @@ export default class SBCloudAppender implements BaseAppender {
     SBCloudAppender.started = true;
 
     this.changeUser = this.changeUser.bind(this);
+    this.connected = this.connected.bind(this);
     eventEmitter.addListener(USER_CHANGE, this.changeUser);
+    eventEmitter.addListener(CONNECTED, this.connected);
   }
 
   destructor(): void { 
@@ -71,6 +73,7 @@ export default class SBCloudAppender implements BaseAppender {
     else AppState.removeEventListener('change', this.eventListener); //for old versions or expo
     this.appStateSubscription = undefined;
     eventEmitter.removeListener(USER_CHANGE, this.changeUser);
+    eventEmitter.removeListener(CONNECTED, this.connected);
   }
 
   private  changeUser() {
@@ -80,6 +83,11 @@ export default class SBCloudAppender implements BaseAppender {
       this.saveToStorage(user);
       this.createTimer();
     }
+  }
+
+  private connected() {
+    InnerLog.i('Connected!');
+    this.send();
   }
 
   update(config?: any): void {
