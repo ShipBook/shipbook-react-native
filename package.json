@@ -1,6 +1,6 @@
 {
   "name": "@shipbook/react-native",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Shipbook gives you the power to remotely gather, search and analyze your user logs and exceptions in the cloud, on a per-user & session basis.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -31,6 +31,7 @@
     "ts-jest": "^27.0.5"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^1.19.3",
     "eventemitter3": "^3.1.2",
     "stacktrace-parser": "^0.1.10",
     "uuid": "^3.4.0"

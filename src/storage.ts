@@ -1,5 +1,5 @@
-// import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AsyncStorage } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+//import { AsyncStorage } from 'react-native';
 
 
 class Storage {
@@ -31,7 +31,7 @@ class Storage {
     const sizeString = await AsyncStorage.getItem(`${key}_size`);
     let size = Number(sizeString ?? "0");
 
-    let valuePairs: string[][]= []
+    let valuePairs: [string, string][]= [];
     if (Array.isArray(value)) {
       for (let v of value){
         valuePairs.push([`${key}_${size}`, JSON.stringify(v)]);
@@ -55,7 +55,7 @@ class Storage {
     for (let i = 0; i < size; ++i) {
       keys.push(`${key}_${i}`);
     }
-    const values = <string[][]>await AsyncStorage.multiGet(keys);
+    const values = await AsyncStorage.multiGet(keys);
     const objects = values.map(value => typeof(value[1]) === 'string' ? JSON.parse(value[1]): undefined);
     keys.push(`${key}_size`);
     await AsyncStorage.multiRemove(keys);
