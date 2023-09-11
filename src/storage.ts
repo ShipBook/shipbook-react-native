@@ -1,6 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-//import { AsyncStorage } from 'react-native';
-
 
 class Storage {
   async setItem(key: string, value: string) {
