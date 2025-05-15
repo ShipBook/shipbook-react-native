@@ -35,10 +35,16 @@ export default class Login {
 
     this.time = new Date();
     this.deviceTime = this.time;
-    this.language = Platform.OS === 'ios'
-        ? NativeModules.SettingsManager.settings.AppleLocale ||
-          NativeModules.SettingsManager.settings.AppleLanguages[0] //iOS 13
-        : NativeModules.I18nManager.localeIdentifier;
+    if (Platform.OS === 'ios') {
+      const settings = NativeModules.SettingsManager?.settings;
+      this.language =
+        settings?.AppleLocale ||
+        (Array.isArray(settings?.AppleLanguages) && settings.AppleLanguages.length > 0
+          ? settings.AppleLanguages[0]
+          : 'en'); // default to English
+    } else {  // Android
+      this.language = NativeModules.I18nManager?.localeIdentifier || 'en'; // default to English
+    }  
   }
 
   async getObj() {
