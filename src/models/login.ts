@@ -20,7 +20,7 @@ export default class Login {
   osVersion: string = String(Platform.Version);
   appVersion: string = '';
   appBuild: string = '';
-  sdkVersion: string = '0.2.0';
+  sdkVersion: string = '0.2.1';
   // sdkBuild: string = '';
   manufacturer: string = platform.manufacturer;
   deviceName: string = '';
