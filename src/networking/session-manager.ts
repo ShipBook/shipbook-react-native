@@ -102,7 +102,9 @@ class SessionManager {
   
     }
     catch (e) {
+      this.isInLoginRequest = false; // Reset flag on error
       InnerLog.e('there was an error with the request', e);
+      return;
     }
   }
 
@@ -139,13 +141,21 @@ class SessionManager {
       appKey: this.loginObj!.appKey
     }
     this.token = undefined;
-    const resp = await connectionClient.request("auth/refreshSdkToken", refresh, HttpMethod.POST);
-    if (resp.ok) {
-      let json = await resp.json();
-      this.token = json.token
-      return true;
+    try {
+      const resp = await connectionClient.request("auth/refreshSdkToken", refresh, HttpMethod.POST);
+      if (resp.ok) {
+        let json = await resp.json();
+        this.token = json.token
+        return true;
+      }
+      else {
+        InnerLog.e('Failed to refresh token: HTTP error', resp.status);
+        return false;
+      }
+    } catch (error) {
+      InnerLog.e('Failed to refresh token: network error', error);
+      return false;
     }
-    else return false;
   }
 
   getUUID() {

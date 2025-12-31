@@ -150,18 +150,22 @@ export default class SBCloudAppender implements BaseAppender {
 
     if (!SessionManager.token) return;
 
-
-    const sessionsData = await this.loadSessionData();
-    if (sessionsData.length == 0) return;
-    const resp = await ConnectionClient.request('sessions/uploadSavedData', sessionsData, HttpMethod.POST);
-    if (resp.ok) {
-      const text = await resp.text()
-      InnerLog.i('got ok of upload ' + text)
-
-    }
-    else {
-      const text = await resp.text()
-      InnerLog.e('got not ok of upload '+ text);
+    try {
+      const sessionsData = await this.loadSessionData();
+      if (sessionsData.length == 0) return;
+      
+      const resp = await ConnectionClient.request('sessions/uploadSavedData', sessionsData, HttpMethod.POST);
+      if (resp.ok) {
+        const text = await resp.text()
+        InnerLog.i('got ok of upload ' + text)
+      }
+      else {
+        const text = await resp.text()
+        InnerLog.e('got not ok of upload '+ text);
+      }
+    } catch (error) {
+      InnerLog.e('Failed to send session data', error);
+      // Don't rethrow - allow the appender to continue functioning
     }
   }
 
@@ -172,6 +176,37 @@ export default class SBCloudAppender implements BaseAppender {
     let sessionData: SessionData | undefined = undefined;
 
     if (storageData.length === 0) return [];
+    
+    // Validate all entries first - if any are corrupted, discard everything
+    let hasActiveSession = false;
+    for (let data of storageData) {
+      if (!data || typeof data !== 'object' || !data.type || typeof data.type !== 'string' || !data.data) {
+        InnerLog.e('Corrupted storage data detected - discarding entire batch', data);
+        return [];
+      }
+      
+      // Type-specific validation
+      if (data.type === DataType.Token && (!data.data.token || typeof data.data.token !== 'string')) {
+        InnerLog.e('Corrupted storage data detected - discarding entire batch', data);
+        return [];
+      }
+      if (data.type === LogType.Exception && (typeof data.data !== 'object' || !data.data.name || !data.data.reason || typeof data.data.stack !== 'string')) {
+        InnerLog.e('Corrupted storage data detected - discarding entire batch', data);
+        return [];
+      }
+      
+      // Sequence validation - User, Exception, and log entries require an active session
+      if (data.type === DataType.Token || data.type === DataType.Login) {
+        hasActiveSession = true;
+      } else if (data.type === DataType.User || data.type === LogType.Exception || 
+                 (data.type !== DataType.Token && data.type !== DataType.Login)) {
+        if (!hasActiveSession) {
+          InnerLog.e('Corrupted storage data detected - discarding entire batch', data);
+          return [];
+        }
+      }
+    }
+
     for (let data of storageData) {
       switch (data.type) {
         case DataType.Token:
@@ -190,8 +225,13 @@ export default class SBCloudAppender implements BaseAppender {
           break;
         case LogType.Exception:
           const {name, reason, stack} = data.data;
-          let exception = await (new Exception(name, reason, stack)).getObj();
-          sessionData!.logs.push(exception);
+          try {
+            let exception = await (new Exception(name, reason, stack)).getObj();
+            sessionData!.logs.push(exception);
+          } catch (error) {
+            InnerLog.e('Corrupted storage data detected - discarding entire batch', error, data);
+            return [];
+          }
           break;
         default: // it is a log
           if (!sessionData) InnerLog.e('session data is empty', storageData);
