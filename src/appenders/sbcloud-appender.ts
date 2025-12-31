@@ -10,7 +10,6 @@ import { Severity, SeverityUtil } from "../models/severity";
 import User from "../models/user";
 import ConnectionClient, { HttpMethod } from "../networking/connection-client";
 import SessionManager from "../networking/session-manager";
-import { AutoQueue } from "../queue";
 import storage from "../storage";
 import { BaseAppender } from "./base-appender";
 import { USER_CHANGE, CONNECTED, eventEmitter } from "../event-emitter";
@@ -54,7 +53,6 @@ export default class SBCloudAppender implements BaseAppender {
   };
 
   static started = false;
-  private aQueue = new AutoQueue();
   constructor(name: string, config?: ConfigResponse) {
     this.name = name;
     this.update(config);
@@ -176,36 +174,6 @@ export default class SBCloudAppender implements BaseAppender {
     let sessionData: SessionData | undefined = undefined;
 
     if (storageData.length === 0) return [];
-    
-    // Validate all entries first - if any are corrupted, discard everything
-    let hasActiveSession = false;
-    for (let data of storageData) {
-      if (!data || typeof data !== 'object' || !data.type || typeof data.type !== 'string' || !data.data) {
-        InnerLog.e('Corrupted storage data detected - discarding entire batch', data);
-        return [];
-      }
-      
-      // Type-specific validation
-      if (data.type === DataType.Token && (!data.data.token || typeof data.data.token !== 'string')) {
-        InnerLog.e('Corrupted storage data detected - discarding entire batch', data);
-        return [];
-      }
-      if (data.type === LogType.Exception && (typeof data.data !== 'object' || !data.data.name || !data.data.reason || typeof data.data.stack !== 'string')) {
-        InnerLog.e('Corrupted storage data detected - discarding entire batch', data);
-        return [];
-      }
-      
-      // Sequence validation - User, Exception, and log entries require an active session
-      if (data.type === DataType.Token || data.type === DataType.Login) {
-        hasActiveSession = true;
-      } else if (data.type === DataType.User || data.type === LogType.Exception || 
-                 (data.type !== DataType.Token && data.type !== DataType.Login)) {
-        if (!hasActiveSession) {
-          InnerLog.e('Corrupted storage data detected - discarding entire batch', data);
-          return [];
-        }
-      }
-    }
 
     for (let data of storageData) {
       switch (data.type) {
@@ -225,16 +193,10 @@ export default class SBCloudAppender implements BaseAppender {
           break;
         case LogType.Exception:
           const {name, reason, stack} = data.data;
-          try {
-            let exception = await (new Exception(name, reason, stack)).getObj();
-            sessionData!.logs.push(exception);
-          } catch (error) {
-            InnerLog.e('Corrupted storage data detected - discarding entire batch', error, data);
-            return [];
-          }
+          let exception = await (new Exception(name, reason, stack)).getObj();
+          sessionData!.logs.push(exception);
           break;
         default: // it is a log
-          if (!sessionData) InnerLog.e('session data is empty', storageData);
           sessionData!.logs.push(data.data);
           break;
       }
@@ -282,8 +244,7 @@ export default class SBCloudAppender implements BaseAppender {
       });
     }
     
-    const task = async ()=> await storage.pushArrayObj(SESSION_DATA, storageData);
-    await this.aQueue.enqueue(task);
+    await storage.pushArrayObj(SESSION_DATA, storageData);
   }
   
   private createTimer() {
