@@ -34,8 +34,8 @@ export default class ConsoleAppender implements BaseAppender {
           console.debug(text);
           break;
         case Severity.Verbose:
-        default: 
-          console.log(`${message.severity} ${text}`)
+        default: // only Verbose 
+          console.log(`${text}`)
       }
     }
   }
