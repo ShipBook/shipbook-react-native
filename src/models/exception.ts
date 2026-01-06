@@ -30,12 +30,27 @@ export default class Exception extends BaseLog {
     // this.callStackSymbols = stack.split('\n');
   }
 
-  async getObj(){
+  async getObj() {
     if (this.stackTrace) return this;
     const stack = stackTraceParser.parse(this.stack);
     const symbolicateStackTrace = require("react-native/Libraries/Core/Devtools/symbolicateStackTrace");
-    const stackTrace = <stackTraceParser.StackFrame[]> (await symbolicateStackTrace(stack)).stack;
-    this.stackTrace = stackTrace.map(sf => new StackTraceElement(sf) );
+    let stackTrace: stackTraceParser.StackFrame[] | undefined = undefined;
+    try {
+      if (typeof symbolicateStackTrace === 'function') {
+        const symbolicated = await symbolicateStackTrace(stack);
+        if (symbolicated && symbolicated.stack) {
+          stackTrace = <stackTraceParser.StackFrame[]>symbolicated.stack;
+        }
+      }
+    } catch (e) {
+      // console.error("Symbolication failed", e);
+    }
+
+    if (!stackTrace) {
+      // Fallback to basic parsing if symbolication fails or is unavailable
+      stackTrace = stack;
+    }
+    this.stackTrace = stackTrace.map(sf => new StackTraceElement(sf));
     return this;
   }
 }
