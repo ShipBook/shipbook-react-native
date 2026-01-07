@@ -6,8 +6,11 @@ import connectionClient from "./networking/connection-client";
 import sessionManager from "./networking/session-manager";
 
 export default class Shipbook {
-  static async start(appId: string, appKey: string, url?: string) {
-    return await sessionManager.login(appId, appKey);
+  static async start(appId: string, appKey: string, appInfo?: {
+    appVersion?: string;
+    appBuild?: string;
+  }) {
+    return await sessionManager.login(appId, appKey, appInfo);
   }
 
   static enableInnerLog(enable: boolean) {

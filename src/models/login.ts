@@ -15,7 +15,7 @@ export default class Login {
   udid: string = '';
   time: Date;
   deviceTime: Date; // the device time in the time of the login request
-  os: string =  Platform.OS;
+  os: string = Platform.OS;
   platform: string = 'react-native'
   osVersion: string = String(Platform.Version);
   appVersion: string = '';
@@ -29,9 +29,16 @@ export default class Login {
   isDebug?: boolean;
   user?: User;
 
-  constructor(appId: string, appKey: string) {
+  constructor(appId: string, appKey: string, appInfo?: {
+    appVersion?: string;
+    appBuild?: string;
+  }) {
     this.appId = appId;
     this.appKey = appKey;
+
+    // Set optional values if provided
+    if (appInfo?.appVersion) this.appVersion = appInfo.appVersion;
+    if (appInfo?.appBuild) this.appBuild = appInfo.appBuild;
 
     this.time = new Date();
     this.deviceTime = this.time;
@@ -44,7 +51,7 @@ export default class Login {
           : 'en'); // default to English
     } else {  // Android
       this.language = NativeModules.I18nManager?.localeIdentifier || 'en'; // default to English
-    }  
+    }
   }
 
   async getObj() {

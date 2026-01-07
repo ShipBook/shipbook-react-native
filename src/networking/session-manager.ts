@@ -9,12 +9,12 @@ import storage from "../storage";
 import connectionClient, { HttpMethod } from "./connection-client";
 import ConnectionClient from "./connection-client";
 
-const defaultConfig: ConfigResponse= {
+const defaultConfig: ConfigResponse = {
   appenders: [
     {
       type: "ConsoleAppender",
       name: "console",
-      config : { pattern: "$message" }
+      config: { pattern: "$message" }
     },
     {
       type: "SBCloudAppender",
@@ -34,19 +34,19 @@ const defaultConfig: ConfigResponse= {
     {
       name: "",
       severity: "Verbose",
-      appenderRef : "cloud"
-   }
+      appenderRef: "cloud"
+    }
   ]
 }
 class SessionManager {
   token?: string;
   _loginObj?: Login;
 
-  get loginObj () {
+  get loginObj() {
     if (this._loginObj) this._loginObj.user = this.user;
     return this._loginObj;
   }
-  
+
   set loginObj(loginObj: Login | undefined) {
     this._loginObj = loginObj
   }
@@ -57,14 +57,17 @@ class SessionManager {
   appKey?: string;
 
   private isInLoginRequest = false;
-  async login(appId: string, appKey: string) {
-    let config = <ConfigResponse> await storage.getObj("config");
+  async login(appId: string, appKey: string, appInfo?: {
+    appVersion?: string;
+    appBuild?: string;
+  }) {
+    let config = <ConfigResponse>await storage.getObj("config");
     if (!config) config = defaultConfig;
 
     this.readConfig(config);
     this.appId = appId;
     this.appKey = appKey;
-    this.loginObj = new Login(appId, appKey);
+    this.loginObj = new Login(appId, appKey, appInfo);
     return this.innerLogin();
   }
 
@@ -77,19 +80,19 @@ class SessionManager {
       const loginObj = await this.loginObj.getObj();
       const resp = await ConnectionClient.request('auth/loginSdk', loginObj, HttpMethod.POST);
       this.isInLoginRequest = false;
-  
+
       if (resp.ok) {
         const json = await resp.json();
         InnerLog.i('Succeeded! : ' + JSON.stringify(json));
         this.token = json.token;
-    
+
         // set config information
         this.readConfig(json.config);
         eventEmitter.emit(CONNECTED);
-  
+
         storage.setObj('config', json.config);
-  
-        return json.sessionUrl;  
+
+        return json.sessionUrl;
       }
       else {
         InnerLog.e('didn\'t succeed to log')
@@ -99,7 +102,7 @@ class SessionManager {
         }
         return;
       }
-  
+
     }
     catch (e) {
       this.isInLoginRequest = false; // Reset flag on error
@@ -116,23 +119,23 @@ class SessionManager {
   }
 
   logout() {
-    this.token = undefined; 
+    this.token = undefined;
     this.user = undefined;
     if (this.loginObj) this.loginObj = new Login(this.appId!, this.appKey!);
     this.innerLogin();
   }
 
-  registerUser(userId: string, 
-               userName?: string, 
-               fullName?: string,
-               email?: string,
-               phoneNumber?: string,
-               additionalInfo?: object) {
+  registerUser(userId: string,
+    userName?: string,
+    fullName?: string,
+    email?: string,
+    phoneNumber?: string,
+    additionalInfo?: object) {
     this.user = {
       userId, userName, fullName, email, phoneNumber, additionalInfo
     };
     if (this._loginObj) eventEmitter.emit(USER_CHANGE);
-    
+
   }
 
   async refreshToken() {
