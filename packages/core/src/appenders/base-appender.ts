@@ -1,5 +1,6 @@
 import type BaseLog from '../models/base-log';
 import type { ConfigResponse } from '../models/config-response';
+import type { RequestContext } from '../models/request-context';
 
 export interface BaseAppender {
   name: string;
@@ -7,4 +8,5 @@ export interface BaseAppender {
   push(log: BaseLog): void | Promise<void>;
   flush(): void;
   destructor(): void;
+  ensureSession?(ctx: RequestContext): void;
 }

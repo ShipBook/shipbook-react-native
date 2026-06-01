@@ -1,4 +1,4 @@
-import type { BaseAppender, BaseLog, User, ConfigResponse, Session } from '@shipbook/core';
+import type { BaseAppender, BaseLog, ConfigResponse, Session, DeviceInfo, OsInfo, AppVersionInfo, VersionInfo, RequestContext } from '@shipbook/core';
 import { Severity, SeverityUtil, InnerLog, connectionClient, HttpMethod, CORE_VERSION, Platform } from '@shipbook/core';
 import { PLATFORM_VERSION } from '../generated/version';
 import { requestContext } from '../context/request-context';
@@ -7,16 +7,7 @@ import { randomUUID } from 'crypto';
 import * as os from 'os';
 
 const MACHINE_UDID_KEY = 'machine_udid';
-
-interface SessionBatch {
-  sessionId: string;
-  userInfo?: User;
-  metadata: Record<string, unknown>;
-  isBackground?: boolean;
-  jobName?: string;
-  startTime: Date;
-  logs: BaseLog[];
-}
+const SESSION_LIST_KEY = 'session_list';
 
 export interface SBCloudAppenderDeps {
   appVersion?: string;
@@ -26,20 +17,35 @@ export interface SBCloudAppenderDeps {
 /**
  * Node.js cloud appender — registered as 'SBCloudAppender' so server config
  * (which references that name) activates this appender via appenderFactory.
+ *
+ * Storage-primary: there is no in-memory map of pending Sessions. The filesystem
+ * (via the storage adapter) holds the working state, just like iOS's CloudQueue.log.
+ * `persistedSessions` is a runtime index of IDs we've already written to disk so
+ * push() can skip redundant descriptor writes for an already-known session.
  */
 export class SBCloudAppender implements BaseAppender {
   name: string;
 
-  private sessionBatches = new Map<string, SessionBatch>();
+  private persistedSessions = new Set<string>();
   private timer?: ReturnType<typeof setTimeout>;
   private maxTime = 3;  // seconds
   private flushSeverity = Severity.Verbose;
   private flushSize = 1000;
-  private machineUdid?: string;
-  private backgroundSessionId = randomUUID();  // One session per process lifecycle
+  // One background session per process lifecycle — id + start time created together,
+  // so any push that falls back to this context describes the same logical entity.
+  private backgroundContext: RequestContext = {
+    sessionId: randomUUID(),
+    startTime: new Date(),
+    isBackground: true,
+    metadata: { type: 'background' }
+  };
+
+  private deviceInfo: DeviceInfo;
+  private osInfo: OsInfo;
+  private appInfo: AppVersionInfo;
+  private sdkInfo: VersionInfo;
 
   private static _deps: SBCloudAppenderDeps;
-  private appVersion: string | undefined;
   private getToken: () => string | undefined;
 
   static setDeps(deps: SBCloudAppenderDeps): void {
@@ -48,8 +54,15 @@ export class SBCloudAppender implements BaseAppender {
 
   constructor(name: string, config?: ConfigResponse) {
     this.name = name;
-    this.appVersion = SBCloudAppender._deps.appVersion;
     this.getToken = SBCloudAppender._deps.getToken;
+    this.deviceInfo = {
+      udid: randomUUID(),  // placeholder, replaced by initMachineUdid if storage has one
+      os: Platform.NODE,
+      deviceName: os.hostname()
+    };
+    this.osInfo = { name: os.platform(), version: os.release() };
+    this.appInfo = { version: SBCloudAppender._deps.appVersion };
+    this.sdkInfo = { version: `core:${CORE_VERSION}/node:${PLATFORM_VERSION}` };
     this.update(config);
     this.restoreFromStorage();
     this.initMachineUdid();
@@ -58,53 +71,56 @@ export class SBCloudAppender implements BaseAppender {
   private async initMachineUdid(): Promise<void> {
     const stored = await storage.getItem(MACHINE_UDID_KEY);
     if (stored) {
-      this.machineUdid = stored;
+      this.deviceInfo.udid = stored;
     } else {
-      this.machineUdid = randomUUID();
-      await storage.setItem(MACHINE_UDID_KEY, this.machineUdid);
+      await storage.setItem(MACHINE_UDID_KEY, this.deviceInfo.udid);
     }
   }
 
   async push(log: BaseLog): Promise<void> {
     InnerLog.d('push() called');
-    const ctx = requestContext.get();
-    const sessionId = ctx?.sessionId || this.backgroundSessionId;
+    const ctx = requestContext.get() ?? this.backgroundContext;
 
-    // Get or create batch for this session
-    let batch = this.sessionBatches.get(sessionId);
-    if (!batch) {
-      // Default to isBackground: true when no context (fallback background session)
-      const isBackground = ctx?.isBackground ?? true;
-      batch = {
-        sessionId,
-        userInfo: ctx?.user,
-        metadata: ctx?.metadata || { type: 'background' },
-        isBackground,
-        jobName: ctx?.jobName,
-        startTime: new Date(),
-        logs: []
-      };
-      this.sessionBatches.set(sessionId, batch);
-    }
+    await this.ensureDescriptorPersisted(ctx);
 
-    // Update user info if it changed (user might login after session started)
-    if (ctx?.user && !batch.userInfo) {
-      batch.userInfo = ctx.user;
-    }
+    const logWithTrace = { ...log, traceId: ctx.traceId };
+    await storage.pushArrayObj(`session_logs_${ctx.sessionId}`, { type: 'log', data: logWithTrace });
 
-    // Attach traceId to the log (only for HTTP requests)
-    const logWithTrace = {
-      ...log,
-      traceId: ctx?.traceId  // undefined for background logs
+    this.scheduleFlush(log);
+  }
+
+  // Without this, sessions whose logs all fall below flushSeverity never reach the server, so stats compute against only error-bearing sessions.
+  async ensureSession(ctx: RequestContext): Promise<void> {
+    await this.ensureDescriptorPersisted(ctx);
+  }
+
+  private async ensureDescriptorPersisted(ctx: RequestContext): Promise<void> {
+    if (this.persistedSessions.has(ctx.sessionId)) return;
+    // Add to the in-memory index BEFORE the await, so concurrent calls for the same
+    // sessionId between here and the storage write skip persistence too. The Set is
+    // single-threaded — no race within a JS event loop.
+    this.persistedSessions.add(ctx.sessionId);
+
+    const descriptor: Omit<Session, 'logs'> = {
+      sessionId: ctx.sessionId,
+      userInfo: ctx.user,
+      metadata: ctx.metadata || { type: 'background' },
+      isBackground: ctx.isBackground ?? true,
+      jobName: ctx.jobName,
+      time: ctx.startTime.toISOString(),
+      platform: Platform.NODE,
+      deviceInfo: this.deviceInfo,
+      os: this.osInfo,
+      appInfo: this.appInfo,
+      sdkInfo: this.sdkInfo
     };
 
-    batch.logs.push(logWithTrace);
-
-    // Persist log incrementally (append-only, efficient)
-    await this.appendLogToStorage(sessionId, logWithTrace);
-
-    // Check if we should flush
-    this.scheduleFlush(log);
+    try {
+      await storage.setObj(`session_${ctx.sessionId}`, descriptor);
+      await storage.setObj(SESSION_LIST_KEY, [...this.persistedSessions]);
+    } catch (error) {
+      InnerLog.e('Failed to persist session:', error);
+    }
   }
 
   private scheduleFlush(log: BaseLog): void {
@@ -116,7 +132,6 @@ export class SBCloudAppender implements BaseAppender {
       return;
     }
 
-    // Start timer if not running (batched flush for Verbose/Debug/Info)
     if (!this.timer) {
       this.timer = setTimeout(() => {
         this.flush();
@@ -133,79 +148,12 @@ export class SBCloudAppender implements BaseAppender {
     this.send();
   }
 
-  // Efficient storage: append log to existing session data
-  private async appendLogToStorage(sessionId: string, log: BaseLog): Promise<void> {
-    try {
-      const batch = this.sessionBatches.get(sessionId);
-      if (!batch) return;
-
-      // Use pushArrayObj to append incrementally (not rewrite everything)
-      const storageKey = `session_${sessionId}`;
-      await storage.pushArrayObj(storageKey, {
-        type: 'log',
-        data: log
-      });
-
-      // Also store session metadata (only once per session)
-      if (batch.logs.length === 1) {
-        await storage.setObj(`session_meta_${sessionId}`, {
-          sessionId: batch.sessionId,
-          userInfo: batch.userInfo,
-          metadata: batch.metadata,
-          isBackground: batch.isBackground,
-          time: batch.startTime.toISOString()
-        });
-
-        // Track session in list
-        const sessionList = await storage.getObj<string[]>('session_list') || [];
-        if (!sessionList.includes(sessionId)) {
-          sessionList.push(sessionId);
-          await storage.setObj('session_list', sessionList);
-        }
-      }
-    } catch (error) {
-      InnerLog.e('Failed to persist log:', error);
-    }
-  }
-
   private async restoreFromStorage(): Promise<void> {
     try {
-      // Find all session metadata keys
-      const sessionList = await storage.getObj<string[]>('session_list');
+      const sessionList = await storage.getObj<string[]>(SESSION_LIST_KEY);
       if (!sessionList?.length) return;
-
-      for (const sessionId of sessionList) {
-        const meta = await storage.getObj<{
-          sessionId: string;
-          userInfo?: User;
-          metadata: Record<string, unknown>;
-          isBackground?: boolean;
-          time: string;
-        }>(`session_meta_${sessionId}`);
-
-        const logsData = await storage.popAllArrayObj(`session_${sessionId}`) as Array<{ type: string; data: BaseLog }>;
-
-        if (meta) {
-          this.sessionBatches.set(sessionId, {
-            sessionId: meta.sessionId,
-            userInfo: meta.userInfo,
-            metadata: meta.metadata,
-            isBackground: meta.isBackground,
-            startTime: new Date(meta.time),
-            logs: logsData.map(l => l.data)
-          });
-        }
-
-        // Clean up
-        await storage.removeItem(`session_meta_${sessionId}`);
-      }
-
-      await storage.removeItem('session_list');
-
-      // If we restored data, trigger a send
-      if (this.sessionBatches.size > 0) {
-        this.scheduleFlush({} as BaseLog);
-      }
+      sessionList.forEach(id => this.persistedSessions.add(id));
+      this.scheduleFlush({} as BaseLog);
     } catch (error) {
       InnerLog.e('Failed to restore from storage:', error);
     }
@@ -213,73 +161,36 @@ export class SBCloudAppender implements BaseAppender {
 
   private async send(): Promise<void> {
     InnerLog.d('send() called');
-    const token = this.getToken();
-    if (!token) {
+    if (!this.getToken()) {
       InnerLog.d('No auth token yet, cannot send logs');
       return;
     }
-
-    if (this.sessionBatches.size === 0) {
+    if (this.persistedSessions.size === 0) {
       InnerLog.d('No sessions to send');
       return;
     }
-    InnerLog.d('Sending ' + this.sessionBatches.size + ' sessions');
+    InnerLog.d('Sending ' + this.persistedSessions.size + ' sessions');
 
-    // Build payload from all sessions; every session includes node identity (deviceInfo, os, appInfo).
+    // Snapshot + clear atomically before any await — concurrent pushes after this point
+    // build a fresh set of pending sessions for the next flush.
+    const idsToSend = [...this.persistedSessions];
+    this.persistedSessions.clear();
+    await storage.setObj(SESSION_LIST_KEY, []);
+
     const sessions: Session[] = [];
-    for (const batch of this.sessionBatches.values()) {
-      sessions.push({
-        sessionId: batch.sessionId,
-        userInfo: batch.userInfo,
-        metadata: batch.metadata,
-        isBackground: batch.isBackground,
-        jobName: batch.jobName,
-        time: batch.startTime.toISOString(),
-        platform: Platform.NODE,
-        deviceInfo: {
-          udid: this.machineUdid || randomUUID(),
-          os: Platform.NODE,
-          deviceName: os.hostname()
-        },
-        os: {
-          name: os.platform(),
-          version: os.release()
-        },
-        appInfo: {
-          version: this.appVersion
-        },
-        sdkInfo: {
-          version: `core:${CORE_VERSION}/node:${PLATFORM_VERSION}`
-        },
-        logs: batch.logs
-      });
+    for (const id of idsToSend) {
+      const descriptor = await storage.getObj<Omit<Session, 'logs'>>(`session_${id}`);
+      const logsData = await storage.popAllArrayObj(`session_logs_${id}`) as Array<{ type: string; data: BaseLog }>;
+      if (descriptor) {
+        sessions.push({ ...descriptor, logs: logsData.map(l => l.data) });
+      }
+      await storage.removeItem(`session_${id}`);
     }
 
-    const missing = sessions.find(s => !s.deviceInfo || !s.os || !s.appInfo);
-    if (missing) {
-      InnerLog.e('Skipping ingest: every session must include deviceInfo, os, and appInfo (node identity). Session: ' + missing.sessionId);
-      return;
-    }
-
-    const payload = { sessions };
-
-    // Clear batches before sending
-    this.sessionBatches.clear();
-
-    // Clear storage
-    try {
-      await storage.removeItem('session_list');
-    } catch {
-      // Ignore storage errors
-    }
+    if (sessions.length === 0) return;
 
     try {
-      const response = await connectionClient.request(
-        'sessions/ingest',
-        payload,
-        HttpMethod.POST
-      );
-
+      const response = await connectionClient.request('sessions/ingest', { sessions }, HttpMethod.POST);
       if (response.ok) {
         InnerLog.i('Ingest succeeded: ' + response.status);
       } else {

@@ -6,6 +6,7 @@ import type BaseLog from './models/base-log';
 import type Message from './models/message';
 import { Severity, SeverityUtil } from './models/severity';
 import type { ConfigResponse } from './models/config-response';
+import type { RequestContext } from './models/request-context';
 
 interface Logger {
   key: string;
@@ -71,6 +72,10 @@ class LogManager {
 
   flush(): void {
     this.appenders.forEach(appender => appender.flush());
+  }
+
+  ensureSession(ctx: RequestContext): void {
+    this.appenders.forEach(appender => appender.ensureSession?.(ctx));
   }
 
   getSeverity(tag: string): Severity {

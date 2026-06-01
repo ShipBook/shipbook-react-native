@@ -1,5 +1,6 @@
 import { createExpressMiddleware, ExpressExtractors } from '../src/middleware/express';
 import { requestContext } from '../src/context/request-context';
+import { logManager } from '@shipbook/core';
 import type { Request, Response, NextFunction } from 'express';
 
 // Mock request factory
@@ -14,8 +15,22 @@ const createMockRequest = (overrides: Partial<Request> = {}): Request => ({
   ...overrides
 } as Request);
 
-// Mock response
-const createMockResponse = (): Response => ({} as Response);
+interface MockResponse extends Response {
+  __triggerClose?: () => void;
+}
+
+// Mock response — captures the 'close' listener so tests can fire it explicitly.
+const createMockResponse = (): MockResponse => {
+  const listeners: Record<string, Array<() => void>> = {};
+  const res = {
+    on: (event: string, cb: () => void) => {
+      (listeners[event] ||= []).push(cb);
+      return res;
+    },
+    __triggerClose: () => listeners['close']?.forEach(cb => cb())
+  } as unknown as MockResponse;
+  return res;
+};
 
 describe('Express Middleware', () => {
   describe('createExpressMiddleware()', () => {
@@ -203,6 +218,62 @@ describe('Express Middleware', () => {
         expect(ctx?.metadata?.method).toBe('GET');
         done();
       });
+    });
+  });
+
+  describe('empty session stubs on res.close', () => {
+    let ensureSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      ensureSpy = jest.spyOn(logManager, 'ensureSession').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      ensureSpy.mockRestore();
+    });
+
+    it('calls logManager.ensureSession with the request context when res closes', () => {
+      const middleware = createExpressMiddleware();
+      const req = createMockRequest();
+      (req as any).sessionID = 'stub-session-1';
+      const res = createMockResponse();
+
+      middleware(req, res, () => { /* handler does nothing — no logs pushed */ });
+
+      expect(ensureSpy).not.toHaveBeenCalled();  // Not until response closes.
+      res.__triggerClose!();
+
+      expect(ensureSpy).toHaveBeenCalledTimes(1);
+      const ctxArg = ensureSpy.mock.calls[0][0];
+      expect(ctxArg.sessionId).toBe('stub-session-1');
+      expect(ctxArg.isBackground).toBe(false);
+      expect(ctxArg.metadata.method).toBe('GET');
+    });
+
+    it('falls back to a generated UUID sessionId when none is extracted', () => {
+      const middleware = createExpressMiddleware();
+      const req = createMockRequest();  // No sessionID set
+      const res = createMockResponse();
+
+      middleware(req, res, () => { /* noop */ });
+      res.__triggerClose!();
+
+      const ctxArg = ensureSpy.mock.calls[0][0];
+      expect(ctxArg.sessionId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+    });
+
+    it('is safe when no appender implements ensureSession (logManager just no-ops)', () => {
+      // Stop spying and let the real logManager run. ConsoleAppender (the default) doesn't
+      // implement ensureSession, so the forEach optional-chains to a no-op — must not throw.
+      ensureSpy.mockRestore();
+      const middleware = createExpressMiddleware();
+      const req = createMockRequest();
+      const res = createMockResponse();
+
+      middleware(req, res, () => { /* noop */ });
+      expect(() => res.__triggerClose!()).not.toThrow();
     });
   });
 

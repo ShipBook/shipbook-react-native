@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { User } from '@shipbook/core';
+import { randomUUID } from 'crypto';
+import type { User, RequestContext } from '@shipbook/core';
+import { logManager } from '@shipbook/core';
 import { requestContext } from '../context/request-context';
 
 export interface ExpressExtractors {
@@ -32,8 +34,8 @@ export function createExpressMiddleware(extractors: ExpressExtractors = {}) {
   const merged = { ...defaultExtractors, ...extractors };
 
   return function shipbookMiddleware(req: Request, res: Response, next: NextFunction) {
-    const context = {
-      sessionId: merged.session?.(req),
+    const context: RequestContext = {
+      sessionId: merged.session?.(req) || randomUUID(),
       traceId: merged.trace?.(req),
       user: merged.user?.(req),
       metadata: {
@@ -42,8 +44,15 @@ export function createExpressMiddleware(extractors: ExpressExtractors = {}) {
         ip: req.ip,
         userAgent: req.headers['user-agent'],
         ...merged.metadata?.(req)
-      }
+      },
+      startTime: new Date(),
+      isBackground: false
     };
+
+    // Without this, sessions whose logs all fall below flushSeverity never reach the server.
+    res.on('close', () => {
+      logManager.ensureSession(context);
+    });
 
     requestContext.run(context, () => next());
   };

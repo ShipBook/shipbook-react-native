@@ -195,6 +195,69 @@ describe('SBCloudAppender', () => {
     });
   });
 
+  describe('ensureSession()', () => {
+    it('creates an empty-log session stub when called without prior push', async () => {
+      appender.ensureSession({
+        sessionId: 'stub-session',
+        startTime: new Date(),
+        isBackground: false,
+        metadata: { method: 'GET', path: '/health' }
+      });
+      appender.flush();
+      await tick();
+
+      const sessions = (requestSpy.mock.calls[0][1] as { sessions: any[] }).sessions;
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].sessionId).toBe('stub-session');
+      expect(sessions[0].logs).toEqual([]);
+      expect(sessions[0].isBackground).toBe(false);
+      expect(sessions[0].metadata).toMatchObject({ method: 'GET', path: '/health' });
+    });
+
+    it('is a no-op when a batch already exists for the sessionId (preserves existing logs)', async () => {
+      await requestContext.run({ sessionId: 'with-logs' }, async () => {
+        await appender.push(new Message('real log', Severity.Info, 'Tag'));
+      });
+
+      appender.ensureSession({
+        sessionId: 'with-logs',
+        startTime: new Date(),
+        isBackground: false
+      });
+
+      appender.flush();
+      await tick();
+
+      const sessions = (requestSpy.mock.calls[0][1] as { sessions: any[] }).sessions;
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].logs).toHaveLength(1);
+      expect(sessions[0].logs[0].message).toBe('real log');
+    });
+
+    it('attaches stub alongside other sessions with logs in the same ingest', async () => {
+      // Use Info (below default flushSeverity) so the push doesn't trigger an immediate
+      // flush; otherwise the has-log session would ship before ensureSession() runs.
+      await requestContext.run({ sessionId: 'has-log' }, async () => {
+        await appender.push(new Message('log', Severity.Info, 'Tag'));
+      });
+      appender.ensureSession({
+        sessionId: 'empty-stub',
+        startTime: new Date(),
+        isBackground: false
+      });
+
+      appender.flush();
+      await tick();
+
+      const sessions = (requestSpy.mock.calls[0][1] as { sessions: any[] }).sessions;
+      const ids = sessions.map((s: any) => s.sessionId).sort();
+      expect(ids).toEqual(['empty-stub', 'has-log']);
+      const stub = sessions.find((s: any) => s.sessionId === 'empty-stub');
+      expect(stub.logs).toEqual([]);
+    });
+
+  });
+
   describe('destructor()', () => {
     it('should flush pending logs on destructor', async () => {
       await appender.push(new Message('destructor test', Severity.Info, 'Tag'));
