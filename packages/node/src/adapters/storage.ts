@@ -9,6 +9,9 @@ import type { IStorage } from '@shipbook/core';
  */
 class NodeStorage implements IStorage {
   private memoryStorage = new Map<string, string>();
+  // Memory fallback for array storage (one JSON-encoded line per item). Used when
+  // filesystem is unavailable (PaaS/serverless with no writable disk, or test mode).
+  private memoryArrays = new Map<string, string[]>();
   private fsEnabled = true;
   private storagePath: string;
   private initialized = false;
@@ -42,10 +45,10 @@ class NodeStorage implements IStorage {
     }
   }
 
-  private getFilePath(key: string): string {
+  private getFilePath(key: string, ext = '.json', suffix = ''): string {
     // Sanitize key for filesystem
     const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, '_');
-    return path.join(this.storagePath, `${safeKey}.json`);
+    return path.join(this.storagePath, `${safeKey}${suffix}${ext}`);
   }
 
   async setItem(key: string, value: string): Promise<void> {
@@ -118,55 +121,79 @@ class NodeStorage implements IStorage {
     }
   }
 
+  // Append-only JSONL queue. One fs.appendFile syscall per push regardless of how many
+  // items — the OS handles the atomic append. No read-then-write race window like the
+  // old per-item-file design had.
   async pushArrayObj(key: string, value: object | object[]): Promise<void> {
     await this.initialize();
-    
-    const sizeKey = `${key}_size`;
-    const sizeStr = await this.getItem(sizeKey);
-    let size = Number(sizeStr ?? '0');
 
     const items = Array.isArray(value) ? value : [value];
+    const encoded = items.map(item => JSON.stringify(item));
 
-    for (const item of items) {
-      await this.setItem(`${key}_${size}`, JSON.stringify(item));
-      size++;
+    if (this.fsEnabled) {
+      try {
+        await fs.promises.appendFile(this.getFilePath(key, '.jsonl'), encoded.join('\n') + '\n', 'utf-8');
+        return;
+      } catch {
+        this.fsEnabled = false;
+      }
     }
 
-    await this.setItem(sizeKey, size.toString());
+    const arr = this.memoryArrays.get(key) ?? [];
+    arr.push(...encoded);
+    this.memoryArrays.set(key, arr);
   }
 
+  // Atomic rotate: rename live file aside so concurrent pushes write to a fresh file.
+  // Then read, parse, unlink. No locking needed; rename is atomic on every POSIX fs.
   async popAllArrayObj(key: string): Promise<object[]> {
     await this.initialize();
-    
-    const sizeKey = `${key}_size`;
-    const sizeStr = await this.getItem(sizeKey);
-    const size = Number(sizeStr ?? '0');
 
-    if (size === 0) return [];
-
-    const objects: object[] = [];
-
-    for (let i = 0; i < size; i++) {
-      const itemKey = `${key}_${i}`;
-      const value = await this.getItem(itemKey);
-      if (value) {
-        try {
-          objects.push(JSON.parse(value));
-        } catch {
-          // Skip invalid items
-        }
+    if (this.fsEnabled) {
+      const live = this.getFilePath(key, '.jsonl');
+      const consuming = this.getFilePath(key, '.jsonl', '_consuming');
+      try {
+        await fs.promises.rename(live, consuming);
+      } catch {
+        return [];  // file doesn't exist — nothing to drain
       }
-      await this.removeItem(itemKey);
+      try {
+        const content = await fs.promises.readFile(consuming, 'utf-8');
+        await fs.promises.unlink(consuming);
+        return content.split('\n').reduce<object[]>((acc, line) => {
+          if (!line) return acc;
+          try { acc.push(JSON.parse(line)); } catch { /* skip malformed */ }
+          return acc;
+        }, []);
+      } catch {
+        return [];
+      }
     }
 
-    await this.removeItem(sizeKey);
-
-    return objects;
+    const snapshot = this.memoryArrays.get(key) ?? [];
+    this.memoryArrays.delete(key);
+    return snapshot.reduce<object[]>((acc, line) => {
+      try { acc.push(JSON.parse(line)); } catch { /* skip */ }
+      return acc;
+    }, []);
   }
 
   async arraySize(key: string): Promise<number> {
-    const sizeStr = await this.getItem(`${key}_size`);
-    return Number(sizeStr ?? '0');
+    await this.initialize();
+
+    if (this.fsEnabled) {
+      try {
+        const content = await fs.promises.readFile(this.getFilePath(key, '.jsonl'), 'utf-8');
+        // Lines are newline-terminated, so a trailing empty split element doesn't count.
+        let count = 0;
+        for (let i = 0; i < content.length; i++) if (content.charCodeAt(i) === 10) count++;
+        return count;
+      } catch {
+        return 0;
+      }
+    }
+
+    return this.memoryArrays.get(key)?.length ?? 0;
   }
 
   /**
@@ -181,6 +208,7 @@ class NodeStorage implements IStorage {
    */
   clear(): void {
     this.memoryStorage.clear();
+    this.memoryArrays.clear();
   }
 
   /**

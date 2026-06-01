@@ -56,12 +56,12 @@ describe('SBCloudAppender', () => {
       expect(session.metadata).toEqual({ type: 'background' });
     });
 
-    it('should persist log to storage', async () => {
+    it('writes session descriptor and log to the session_queue', async () => {
       await appender.push(new Message('persist test', Severity.Info, 'Tag'));
 
-      const sessionList = await storage.getObj<string[]>('session_list');
-      expect(sessionList).toBeDefined();
-      expect(sessionList!.length).toBe(1);
+      const records = await storage.popAllArrayObj('session_queue') as Array<{ type: string }>;
+      const types = records.map(r => r.type);
+      expect(types).toEqual(['session', 'log']);
     });
   });
 
@@ -197,7 +197,7 @@ describe('SBCloudAppender', () => {
 
   describe('ensureSession()', () => {
     it('creates an empty-log session stub when called without prior push', async () => {
-      appender.ensureSession({
+      await appender.ensureSession({
         sessionId: 'stub-session',
         startTime: new Date(),
         isBackground: false,
@@ -219,7 +219,7 @@ describe('SBCloudAppender', () => {
         await appender.push(new Message('real log', Severity.Info, 'Tag'));
       });
 
-      appender.ensureSession({
+      await appender.ensureSession({
         sessionId: 'with-logs',
         startTime: new Date(),
         isBackground: false
@@ -240,7 +240,7 @@ describe('SBCloudAppender', () => {
       await requestContext.run({ sessionId: 'has-log' }, async () => {
         await appender.push(new Message('log', Severity.Info, 'Tag'));
       });
-      appender.ensureSession({
+      await appender.ensureSession({
         sessionId: 'empty-stub',
         startTime: new Date(),
         isBackground: false

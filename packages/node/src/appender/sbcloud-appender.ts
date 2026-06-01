@@ -7,7 +7,14 @@ import { randomUUID } from 'crypto';
 import * as os from 'os';
 
 const MACHINE_UDID_KEY = 'machine_udid';
-const SESSION_LIST_KEY = 'session_list';
+const QUEUE_KEY = 'session_queue';
+
+enum RecordType { Session = 'session', Log = 'log' }
+interface QueueRecord {
+  type: RecordType;
+  sessionId: string;
+  data: Session | BaseLog;
+}
 
 export interface SBCloudAppenderDeps {
   appVersion?: string;
@@ -18,15 +25,19 @@ export interface SBCloudAppenderDeps {
  * Node.js cloud appender — registered as 'SBCloudAppender' so server config
  * (which references that name) activates this appender via appenderFactory.
  *
- * Storage-primary: there is no in-memory map of pending Sessions. The filesystem
- * (via the storage adapter) holds the working state, just like iOS's CloudQueue.log.
- * `persistedSessions` is a runtime index of IDs we've already written to disk so
- * push() can skip redundant descriptor writes for an already-known session.
+ * Single queue with typed records: every session descriptor and every log is
+ * appended to `session_queue` via IStorage.pushArrayObj. send() drains via
+ * popAllArrayObj, groups records by sessionId, posts the result. Mirrors iOS's
+ * CloudQueue pattern but with explicit sessionId per record since Node has
+ * many concurrent sessions per process.
  */
 export class SBCloudAppender implements BaseAppender {
   name: string;
 
-  private persistedSessions = new Set<string>();
+  // Tracks which sessionIds we've already written a descriptor record for in the current
+  // flush window. Cleared on each send() so the next window starts fresh. Lives only in
+  // memory — no storage involvement. Sync Set ops make this race-free within the JS event loop.
+  private emittedSessions = new Set<string>();
   private timer?: ReturnType<typeof setTimeout>;
   private maxTime = 3;  // seconds
   private flushSeverity = Severity.Verbose;
@@ -64,8 +75,9 @@ export class SBCloudAppender implements BaseAppender {
     this.appInfo = { version: SBCloudAppender._deps.appVersion };
     this.sdkInfo = { version: `core:${CORE_VERSION}/node:${PLATFORM_VERSION}` };
     this.update(config);
-    this.restoreFromStorage();
     this.initMachineUdid();
+    // Anything leftover from a previous process is drained by the first scheduled flush.
+    this.scheduleFlush({} as BaseLog);
   }
 
   private async initMachineUdid(): Promise<void> {
@@ -84,18 +96,21 @@ export class SBCloudAppender implements BaseAppender {
     await this.ensureSession(ctx);
 
     const logWithTrace = { ...log, traceId: ctx.traceId };
-    await storage.pushArrayObj(`session_logs_${ctx.sessionId}`, { type: 'log', data: logWithTrace });
+    await storage.pushArrayObj(QUEUE_KEY, {
+      type: RecordType.Log,
+      sessionId: ctx.sessionId,
+      data: logWithTrace
+    });
 
     this.scheduleFlush(log);
   }
 
   // Without this, sessions whose logs all fall below flushSeverity never reach the server, so stats compute against only error-bearing sessions.
   async ensureSession(ctx: RequestContext): Promise<void> {
-    if (this.persistedSessions.has(ctx.sessionId)) return;
-    // Add to the in-memory index BEFORE the await so concurrent calls for the same sessionId skip persistence too — the Set is single-threaded within the JS event loop.
-    this.persistedSessions.add(ctx.sessionId);
+    if (this.emittedSessions.has(ctx.sessionId)) return;
+    this.emittedSessions.add(ctx.sessionId);
 
-    const descriptor: Omit<Session, 'logs'> = {
+    const session: Session = {
       sessionId: ctx.sessionId,
       userInfo: ctx.user,
       metadata: ctx.metadata || { type: 'background' },
@@ -106,15 +121,15 @@ export class SBCloudAppender implements BaseAppender {
       deviceInfo: this.deviceInfo,
       os: this.osInfo,
       appInfo: this.appInfo,
-      sdkInfo: this.sdkInfo
+      sdkInfo: this.sdkInfo,
+      logs: []
     };
 
-    try {
-      await storage.setObj(`session_${ctx.sessionId}`, descriptor);
-      await storage.setObj(SESSION_LIST_KEY, [...this.persistedSessions]);
-    } catch (error) {
-      InnerLog.e('Failed to persist session:', error);
-    }
+    await storage.pushArrayObj(QUEUE_KEY, {
+      type: RecordType.Session,
+      sessionId: ctx.sessionId,
+      data: session
+    });
   }
 
   private scheduleFlush(log: BaseLog): void {
@@ -142,46 +157,39 @@ export class SBCloudAppender implements BaseAppender {
     this.send();
   }
 
-  private async restoreFromStorage(): Promise<void> {
-    try {
-      const sessionList = await storage.getObj<string[]>(SESSION_LIST_KEY);
-      if (!sessionList?.length) return;
-      sessionList.forEach(id => this.persistedSessions.add(id));
-      this.scheduleFlush({} as BaseLog);
-    } catch (error) {
-      InnerLog.e('Failed to restore from storage:', error);
-    }
-  }
-
   private async send(): Promise<void> {
     InnerLog.d('send() called');
     if (!this.getToken()) {
       InnerLog.d('No auth token yet, cannot send logs');
       return;
     }
-    if (this.persistedSessions.size === 0) {
+
+    // Drain the queue atomically. New pushes after this point land in a fresh queue and
+    // get picked up by the next flush.
+    const records = await storage.popAllArrayObj(QUEUE_KEY) as QueueRecord[];
+    this.emittedSessions.clear();
+
+    if (records.length === 0) {
       InnerLog.d('No sessions to send');
       return;
     }
-    InnerLog.d('Sending ' + this.persistedSessions.size + ' sessions');
 
-    // Snapshot + clear atomically before any await — concurrent pushes after this point
-    // build a fresh set of pending sessions for the next flush.
-    const idsToSend = [...this.persistedSessions];
-    this.persistedSessions.clear();
-    await storage.setObj(SESSION_LIST_KEY, []);
-
-    const sessions: Session[] = [];
-    for (const id of idsToSend) {
-      const descriptor = await storage.getObj<Omit<Session, 'logs'>>(`session_${id}`);
-      const logsData = await storage.popAllArrayObj(`session_logs_${id}`) as Array<{ type: string; data: BaseLog }>;
-      if (descriptor) {
-        sessions.push({ ...descriptor, logs: logsData.map(l => l.data) });
+    // Group records by sessionId — descriptor populates the Session, logs append.
+    const sessionsMap = new Map<string, Session>();
+    for (const record of records) {
+      if (record.type === RecordType.Session) {
+        sessionsMap.set(record.sessionId, record.data as Session);
+      } else if (record.type === RecordType.Log) {
+        const session = sessionsMap.get(record.sessionId);
+        if (session) session.logs!.push(record.data as BaseLog);
+        // else: log for a session whose descriptor we don't have. Drop — shouldn't
+        // happen because ensureSession is awaited before the first log per session.
       }
-      await storage.removeItem(`session_${id}`);
     }
 
+    const sessions = [...sessionsMap.values()];
     if (sessions.length === 0) return;
+    InnerLog.d('Sending ' + sessions.length + ' sessions');
 
     try {
       const response = await connectionClient.request('sessions/ingest', { sessions }, HttpMethod.POST);
