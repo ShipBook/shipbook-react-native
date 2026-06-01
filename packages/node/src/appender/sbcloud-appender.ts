@@ -81,7 +81,7 @@ export class SBCloudAppender implements BaseAppender {
     InnerLog.d('push() called');
     const ctx = requestContext.get() ?? this.backgroundContext;
 
-    await this.ensureDescriptorPersisted(ctx);
+    await this.ensureSession(ctx);
 
     const logWithTrace = { ...log, traceId: ctx.traceId };
     await storage.pushArrayObj(`session_logs_${ctx.sessionId}`, { type: 'log', data: logWithTrace });
@@ -91,14 +91,8 @@ export class SBCloudAppender implements BaseAppender {
 
   // Without this, sessions whose logs all fall below flushSeverity never reach the server, so stats compute against only error-bearing sessions.
   async ensureSession(ctx: RequestContext): Promise<void> {
-    await this.ensureDescriptorPersisted(ctx);
-  }
-
-  private async ensureDescriptorPersisted(ctx: RequestContext): Promise<void> {
     if (this.persistedSessions.has(ctx.sessionId)) return;
-    // Add to the in-memory index BEFORE the await, so concurrent calls for the same
-    // sessionId between here and the storage write skip persistence too. The Set is
-    // single-threaded — no race within a JS event loop.
+    // Add to the in-memory index BEFORE the await so concurrent calls for the same sessionId skip persistence too — the Set is single-threaded within the JS event loop.
     this.persistedSessions.add(ctx.sessionId);
 
     const descriptor: Omit<Session, 'logs'> = {

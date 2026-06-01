@@ -50,9 +50,7 @@ export function createExpressMiddleware(extractors: ExpressExtractors = {}) {
     };
 
     // Without this, sessions whose logs all fall below flushSeverity never reach the server.
-    res.on('close', () => {
-      logManager.ensureSession(context);
-    });
+    logManager.ensureSession(context);
 
     requestContext.run(context, () => next());
   };

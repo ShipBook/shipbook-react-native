@@ -221,7 +221,7 @@ describe('Express Middleware', () => {
     });
   });
 
-  describe('empty session stubs on res.close', () => {
+  describe('empty session stub registration', () => {
     let ensureSpy: jest.SpyInstance;
 
     beforeEach(() => {
@@ -232,18 +232,17 @@ describe('Express Middleware', () => {
       ensureSpy.mockRestore();
     });
 
-    it('calls logManager.ensureSession with the request context when res closes', () => {
+    it('calls logManager.ensureSession at middleware start, before next()', () => {
       const middleware = createExpressMiddleware();
       const req = createMockRequest();
       (req as any).sessionID = 'stub-session-1';
       const res = createMockResponse();
 
-      middleware(req, res, () => { /* handler does nothing — no logs pushed */ });
-
-      expect(ensureSpy).not.toHaveBeenCalled();  // Not until response closes.
-      res.__triggerClose!();
+      let nextCalled = false;
+      middleware(req, res, () => { nextCalled = true; });
 
       expect(ensureSpy).toHaveBeenCalledTimes(1);
+      expect(nextCalled).toBe(true);
       const ctxArg = ensureSpy.mock.calls[0][0];
       expect(ctxArg.sessionId).toBe('stub-session-1');
       expect(ctxArg.isBackground).toBe(false);
@@ -256,7 +255,6 @@ describe('Express Middleware', () => {
       const res = createMockResponse();
 
       middleware(req, res, () => { /* noop */ });
-      res.__triggerClose!();
 
       const ctxArg = ensureSpy.mock.calls[0][0];
       expect(ctxArg.sessionId).toMatch(
@@ -272,8 +270,7 @@ describe('Express Middleware', () => {
       const req = createMockRequest();
       const res = createMockResponse();
 
-      middleware(req, res, () => { /* noop */ });
-      expect(() => res.__triggerClose!()).not.toThrow();
+      expect(() => middleware(req, res, () => { /* noop */ })).not.toThrow();
     });
   });
 

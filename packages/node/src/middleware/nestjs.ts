@@ -14,9 +14,7 @@ export interface NestExtractors {
 export function createNestInterceptor(extractors: NestExtractors = {}) {
   class ShipbookInterceptor implements NestInterceptor {
     intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
-      const http = context.switchToHttp();
-      const req = http.getRequest();
-      const res = http.getResponse();
+      const req = context.switchToHttp().getRequest();
 
       const user = extractors.user?.(context) || (req.user ? {
         userId: req.user.id || req.user.userId,
@@ -38,9 +36,7 @@ export function createNestInterceptor(extractors: NestExtractors = {}) {
       };
 
       // Without this, sessions whose logs all fall below flushSeverity never reach the server.
-      res?.on?.('close', () => {
-        logManager.ensureSession(ctx);
-      });
+      logManager.ensureSession(ctx);
 
       // Use Observable constructor to wrap the async context
       const { Observable: RxObservable } = require('rxjs');
