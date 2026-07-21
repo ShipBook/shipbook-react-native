@@ -1,5 +1,7 @@
 import { Log, appenderFactory, logManager, InnerLog, connectionClient, HttpMethod, Message } from '@shipbook/core';
 import type { ConfigResponse } from '@shipbook/core';
+import * as fs from 'fs';
+import * as path from 'path';
 import { storage } from './adapters';
 import { createExpressMiddleware } from './middleware/express';
 import { createNestInterceptor } from './middleware/nestjs';
@@ -26,7 +28,7 @@ class ShipbookNode {
 
   async start(appId: string, appKey: string, appVersion?: string): Promise<string | undefined> {
     // Set deps and register class so the factory can create it during config()
-    SBCloudAppender.setDeps({ appVersion, getToken: () => authManager.getToken() });
+    SBCloudAppender.setDeps({ appVersion: appVersion ?? this.detectAppVersion(), getToken: () => authManager.getToken() });
     appenderFactory.register('SBCloudAppender', SBCloudAppender);
 
     connectionClient.setDeps({
@@ -58,6 +60,24 @@ class ShipbookNode {
     this.scheduleConfigRefresh(result.config.configRefreshInterval);
 
     return undefined;
+  }
+
+  // Nearest package.json wins — walking past one without a version would grab an unrelated manifest
+  private detectAppVersion(): string | undefined {
+    let dir = process.cwd();
+    for (;;) {
+      const file = path.join(dir, 'package.json');
+      if (fs.existsSync(file)) {
+        try {
+          return (JSON.parse(fs.readFileSync(file, 'utf8')) as { version?: string }).version;
+        } catch {
+          return undefined;
+        }
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) return undefined;
+      dir = parent;
+    }
   }
 
   private scheduleConfigRefresh(intervalSeconds?: number): void {
