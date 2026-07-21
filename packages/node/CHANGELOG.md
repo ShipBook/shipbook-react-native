@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.0
+- `start()` now detects your app's version automatically. When the `appVersion` argument is omitted, the SDK reads the `version` field from the nearest `package.json` — the same approach Bugsnag and Datadog use. Passing it explicitly still overrides.
+
 ## 1.2.1
 - Switched the offline queue to JSONL for sessions and logs.
 
