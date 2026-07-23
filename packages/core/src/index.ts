@@ -24,7 +24,9 @@ export {
   StackTraceElement,
   Severity,
   SeverityUtil,
-  Platform
+  Platform,
+  SESSION_LINK_HEADER,
+  parseSessionLinkHeader
 } from './models';
 
 export type {
@@ -35,6 +37,7 @@ export type {
   RootResponse,
   RequestContext,
   Session,
+  SessionLink,
   Browser,
   DeviceInfo,
   VersionInfo,

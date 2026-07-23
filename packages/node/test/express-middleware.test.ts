@@ -96,6 +96,33 @@ describe('Express Middleware', () => {
       });
     });
 
+    it('should extract callerSession from x-shipbook-session header', (done) => {
+      const middleware = createExpressMiddleware();
+      const req = createMockRequest({
+        headers: { 'x-shipbook-session': 'app-1:sess-abc' }
+      });
+      const res = createMockResponse();
+
+      middleware(req, res, () => {
+        const ctx = requestContext.get();
+        expect(ctx?.callerSession).toEqual({ appId: 'app-1', sessionId: 'sess-abc' });
+        done();
+      });
+    });
+
+    it('should ignore a malformed x-shipbook-session header', (done) => {
+      const middleware = createExpressMiddleware();
+      const req = createMockRequest({
+        headers: { 'x-shipbook-session': 'no-separator' }
+      });
+      const res = createMockResponse();
+
+      middleware(req, res, () => {
+        expect(requestContext.get()?.callerSession).toBeUndefined();
+        done();
+      });
+    });
+
     it('should extract sessionId from express-session', (done) => {
       const middleware = createExpressMiddleware();
       const req = createMockRequest();

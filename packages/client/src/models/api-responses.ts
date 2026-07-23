@@ -7,6 +7,7 @@ export interface LoginResponse {
   token: string;
   config: ConfigResponse;
   sessionUrl: string;
+  sessionId?: string; // Absent on older servers; empty when the device is silenced
 }
 
 /**
